@@ -80,11 +80,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const handleProgressPointerDown = (event: React.PointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); seekFromClientX(event.clientX); };
 
   const handleTogglePlay = () => {
-    if (isYouTube) {
-      // Keep the legacy engine's position in sync so the room broadcaster sends the real YouTube position.
-      audioEngine.seek(youtubePlayer.getCurrentTime());
-      if (isPlaying) youtubePlayer.pause(); else youtubePlayer.play();
-    }
+    if (isYouTube) audioEngine.seek(youtubePlayer.getCurrentTime());
     onTogglePlay();
   };
 
@@ -99,11 +95,18 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
       </div>
 
       <div className="mx-auto w-full max-w-[1600px] px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:py-2.5">
+        {isYouTube && (
+          <div className="mb-2 flex justify-center">
+            <div className="relative aspect-video w-[min(320px,calc(100vw-24px))] overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl sm:w-[360px]" aria-label="Video player">
+              <div ref={youtubeHostRef} className="absolute inset-0 h-full w-full" />
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] lg:items-center lg:gap-6">
           <div className="flex min-w-0 items-center gap-2.5 lg:max-w-[560px]">
-            {isYouTube && <div className="relative h-[68px] w-[120px] shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black sm:h-[78px] sm:w-[138px]" aria-label="YouTube player"><div ref={youtubeHostRef} className="h-full w-full" /></div>}
             <button type="button" onClick={onOpenLyrics} className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-white/10 bg-white/5 sm:h-12 sm:w-12" title="Open now playing"><img src={currentSong.coverArt} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" /><span className="absolute inset-0 hidden place-items-center bg-black/50 hover:grid"><ChevronUp size={18} /></span></button>
-            <button type="button" onClick={onOpenLyrics} className="min-w-0 flex-1 text-left"><div className="truncate text-sm font-semibold leading-5 text-white">{currentSong.title}</div><div className="truncate text-xs leading-4 text-zinc-400">{currentSong.artist}</div><div className="mt-0.5 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">{isYouTube ? 'YouTube · official player' : 'Authorized stream'}</div></button>
+            <button type="button" onClick={onOpenLyrics} className="min-w-0 flex-1 text-left"><div className="truncate text-sm font-semibold leading-5 text-white">{currentSong.title}</div><div className="truncate text-xs leading-4 text-zinc-400">{currentSong.artist}</div></button>
             <div className="hidden shrink-0 items-center gap-0.5 sm:flex"><button type="button" onClick={toggleLike} className={`${iconButton} ${isLiked ? 'text-rose-400' : ''}`} aria-label="Like"><Heart size={17} fill={isLiked ? 'currentColor' : 'none'} /></button><button type="button" onClick={toggleDislike} className={`${iconButton} ${isDisliked ? 'text-white' : ''}`} aria-label="Dislike"><ThumbsDown size={16} fill={isDisliked ? 'currentColor' : 'none'} /></button></div>
           </div>
 
@@ -128,7 +131,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
             <div className="relative hidden md:block"><button type="button" onClick={() => setQualityMenuOpen((open) => !open)} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10">{quality === 'data-saver-64k' ? '64k' : quality === 'normal-128k' ? '128k' : 'HD'}</button>{qualityMenuOpen && <div className="absolute bottom-full right-0 z-[60] mb-2 w-44 rounded-xl border border-white/10 bg-zinc-900 p-1.5 shadow-2xl">{(['data-saver-64k', 'normal-128k', 'high-320k'] as AudioQuality[]).map((item) => <button type="button" key={item} onClick={() => { onChangeQuality(item); setQualityMenuOpen(false); }} className={`w-full rounded-lg px-2.5 py-2 text-left text-xs ${quality === item ? 'bg-rose-500/15 text-rose-300' : 'text-zinc-300 hover:bg-white/5'}`}>{item === 'data-saver-64k' ? 'Data Saver · 64k' : item === 'normal-128k' ? 'Standard · 128k' : 'High · 320k'}</button>)}</div>}</div>
           </div>
         </div>
-        <div className="mt-1 flex items-center justify-between px-1 text-[9px] font-mono text-zinc-500 sm:hidden"><span>{formatTime(position)}</span><span>{isYouTube ? 'YOUTUBE' : 'STREAM'}</span><span>{formatTime(duration)}</span></div>
+        <div className="mt-1 flex items-center justify-between px-1 text-[9px] font-mono text-zinc-500 sm:hidden"><span>{formatTime(position)}</span><span>NOW PLAYING</span><span>{formatTime(duration)}</span></div>
       </div>
     </div>
   );
