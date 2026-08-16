@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Play, Plus, Heart, Search, Sparkles, Music2, Users, ArrowRight } from 'lucide-react';
 import { Song, Playlist, SupportedLanguage, ExperienceMode } from '../../types';
-import { translations } from '../../data/translations';
 
 interface HomeViewProps {
   songs: Song[];
@@ -36,10 +35,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onOpenAiGenerator,
   onSelectPlaylist,
   onNavigateTab,
-  language,
 }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
-  const t = translations[language] || translations.en;
   const moodChips = ['all', 'relax', 'workout', 'energize', 'focus', 'party', 'romance', 'bollywood', 'punjabi', 'lofi'];
 
   const filteredSongs = useMemo(() => songs.filter((song) => {
@@ -60,7 +57,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     <div className="space-y-8 pb-16 animate-in fade-in duration-200">
       <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
         <div className="max-w-3xl">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 font-bold">{t.home?.welcome || 'Your music space'}</p>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 font-bold">Your music space</p>
           <h1 className="mt-2 text-3xl sm:text-5xl font-black tracking-tight text-white">Find something worth listening to.</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">Search YouTube for real, playable music, build your library, or start a listening room with people you care about.</p>
           <div className="mt-6 flex flex-wrap gap-2">
