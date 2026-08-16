@@ -24,10 +24,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const [youtubePosition, setYoutubePosition] = useState(0);
   const [youtubeDuration, setYoutubeDuration] = useState(0);
   const [youtubeReady, setYoutubeReady] = useState(false);
-  const [youtubeBlocked, setYoutubeBlocked] = useState(false);
   const progressRef = useRef<HTMLDivElement>(null);
   const youtubeHostRef = useRef<HTMLDivElement>(null);
-  const youtubeSongRef = useRef<string | null>(null);
   const isYouTube = Boolean(currentSong?.youtubeVideoId);
 
   useEffect(() => {
@@ -42,7 +40,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
     if (!youtubeHostRef.current) return;
     const ready = () => setYoutubeReady(true);
     const blocked = () => {
-      setYoutubeBlocked(true);
       // If the app optimistically marked the track as playing, return the app
       // state to paused so the next tap is a real user-gesture play.
       if (isPlaying) onTogglePlay();
@@ -68,12 +65,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
 
   useEffect(() => {
     if (!currentSong?.youtubeVideoId) return;
-    youtubeSongRef.current = currentSong.id;
-    setYoutubeBlocked(false);
     setYoutubePosition(playbackPosition);
-    // Attempt the requested playback state. If the browser blocks scripted
-    // playback, the player emits youtube-autoplay-blocked and the UI returns
-    // to a real Play state. A later Play tap is a direct user gesture.
     youtubePlayer.load(currentSong.youtubeVideoId, playbackPosition, isPlaying, 1).catch((error) => console.warn('Unable to load YouTube track', error));
   }, [currentSong?.id, currentSong?.youtubeVideoId]);
 
@@ -98,17 +90,22 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const skip = (amount: number) => seekTo(position + amount);
   const handleProgressPointerDown = (event: React.PointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); seekFromClientX(event.clientX); };
   const handleTogglePlay = () => {
-    if (isYouTube) {
-      // Decide from the actual YouTube state, not the React state. A newly
-      // selected track can be marked playing by the app before the iframe is
-      // allowed to autoplay.
-      if (youtubePlayer.isActuallyPlaying()) {
-        youtubePlayer.pause();
-      } else {
-        youtubePlayer.play();
-      }
+    if (!isYouTube) {
+      onTogglePlay();
+      return;
     }
-    onTogglePlay();
+
+    const actualPlaying = youtubePlayer.isActuallyPlaying();
+    if (actualPlaying) {
+      youtubePlayer.pause();
+      if (isPlaying) onTogglePlay();
+      return;
+    }
+
+    // This call stays inside the tap/click handler, which is essential on mobile
+    // because browsers may block scripted autoplay outside a user gesture.
+    youtubePlayer.play();
+    if (!isPlaying) onTogglePlay();
   };
   const toggleLike = () => { setIsLiked((value) => !value); setIsDisliked(false); };
   const toggleDislike = () => { setIsDisliked((value) => !value); setIsLiked(false); };
