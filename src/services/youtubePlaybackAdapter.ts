@@ -1,7 +1,6 @@
 import { audioEngine } from './audioEngine';
 import type { Song } from '../types';
 
-/** Official embedded YouTube playback adapter. No downloading, extraction, or proxying. */
 declare global {
   interface Window { YT?: any; onYouTubeIframeAPIReady?: () => void; }
 }
@@ -27,10 +26,8 @@ let originalMethods: any = null;
 function getYoutubeId(song: Song): string | null {
   if (song.youtubeVideoId) return song.youtubeVideoId;
   if (OFFICIAL_VIDEO_IDS[song.id]) return OFFICIAL_VIDEO_IDS[song.id];
-  // YouTube playlist imports created by youtubeService use yt-{videoId}-{index} IDs.
   const imported = song.id.match(/^yt-([A-Za-z0-9_-]{11})-\d+$/);
   if (imported?.[1]) return imported[1];
-  // Live search results use yt-search-{videoId} IDs.
   const searched = song.id.match(/^yt-search-([A-Za-z0-9_-]{11})$/);
   return searched?.[1] || null;
 }
@@ -39,7 +36,6 @@ function loadYouTubeAPI(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve();
   if (window.YT?.Player) return Promise.resolve();
   if (playerPromise) return playerPromise;
-
   playerPromise = new Promise((resolve) => {
     const previous = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => { previous?.(); resolve(); };
@@ -60,8 +56,16 @@ function ensureContainer(): HTMLElement {
   container = document.createElement('div');
   container.id = 'syncbeat-youtube-player';
   Object.assign(container.style, {
-    position: 'fixed', left: '-10000px', top: '0', width: '200px', height: '200px',
-    opacity: '0.01', pointerEvents: 'none', zIndex: '-1',
+    position: 'fixed',
+    right: '16px',
+    bottom: '96px',
+    width: '200px',
+    height: '200px',
+    background: '#000',
+    borderRadius: '16px',
+    overflow: 'hidden',
+    boxShadow: '0 20px 60px rgba(0,0,0,.45)',
+    zIndex: '60',
   });
   document.body.appendChild(container);
   return container;
@@ -82,8 +86,17 @@ async function ensurePlayer(videoId: string): Promise<any> {
   await loadYouTubeAPI();
   if (!player) {
     player = new window.YT!.Player(ensureContainer(), {
-      width: '200', height: '200', videoId,
-      playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, playsinline: 1, rel: 0, modestbranding: 1 },
+      width: '200',
+      height: '200',
+      videoId,
+      playerVars: {
+        autoplay: 0,
+        controls: 1,
+        disablekb: 0,
+        fs: 1,
+        playsinline: 1,
+        rel: 1,
+      },
       events: {
         onReady: () => {
           playerReady = true;
@@ -99,7 +112,14 @@ async function ensurePlayer(videoId: string): Promise<any> {
             if (originalPause) originalPause.call(audioEngine);
           }
         },
-        onError: (event: any) => { console.warn('YouTube embedded playback error:', event?.data); isYoutubePlaying = false; },
+        onAutoplayBlocked: () => {
+          isYoutubePlaying = false;
+          stopPositionTimer();
+        },
+        onError: (event: any) => {
+          console.warn('YouTube embedded playback error:', event?.data);
+          isYoutubePlaying = false;
+        },
       },
     });
   } else if (activeYoutubeId !== videoId) {
@@ -135,12 +155,12 @@ export function installYouTubePlaybackAdapter() {
 
     activeSong = song;
     playbackRate = rate;
-    isYoutubePlaying = true;
     const yt = await ensurePlayer(videoId);
     playerReady = true;
     yt.setPlaybackRate?.(rate);
     yt.loadVideoById({ videoId, startSeconds: Math.max(0, startFromSeconds) });
     activeYoutubeId = videoId;
+    isYoutubePlaying = true;
     startPositionTimer();
   };
 
