@@ -23,6 +23,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
   const [youtubePosition, setYoutubePosition] = useState(0);
   const [youtubeDuration, setYoutubeDuration] = useState(0);
+  const [youtubeReady, setYoutubeReady] = useState(false);
+  const [youtubeError, setYoutubeError] = useState<string | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const youtubeHostRef = useRef<HTMLDivElement>(null);
   const isYouTube = Boolean(currentSong?.youtubeVideoId);
@@ -37,7 +39,21 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
 
   useEffect(() => {
     if (!youtubeHostRef.current) return;
-    youtubePlayer.mount(youtubeHostRef.current).catch((error) => console.warn('YouTube player initialization failed', error));
+    const ready = () => setYoutubeReady(true);
+    const error = (event: Event) => {
+      const detail = (event as CustomEvent<{ code?: number }>).detail;
+      setYoutubeError(detail?.code ? `YouTube player error ${detail.code}` : 'Unable to play this video');
+    };
+    window.addEventListener('syncbeat:youtube-ready', ready);
+    window.addEventListener('syncbeat:youtube-error', error);
+    youtubePlayer.mount(youtubeHostRef.current).catch((err) => {
+      console.warn('YouTube player initialization failed', err);
+      setYoutubeError('YouTube player could not initialize');
+    });
+    return () => {
+      window.removeEventListener('syncbeat:youtube-ready', ready);
+      window.removeEventListener('syncbeat:youtube-error', error);
+    };
   }, []);
 
   useEffect(() => {
@@ -52,14 +68,18 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
 
   useEffect(() => {
     if (!currentSong?.youtubeVideoId) return;
+    setYoutubeError(null);
     setYoutubePosition(playbackPosition);
-    youtubePlayer.load(currentSong.youtubeVideoId, playbackPosition, isPlaying, 1).catch((error) => console.warn('Unable to load YouTube track', error));
+    // Do not rely on effect-driven autoplay: mobile browsers can reject it because
+    // the original tap has already left the call stack. The explicit Play button
+    // below calls youtubePlayer.play() directly from the user's gesture.
+    youtubePlayer.load(currentSong.youtubeVideoId, playbackPosition, false, 1).catch((error) => console.warn('Unable to load YouTube track', error));
   }, [currentSong?.id, currentSong?.youtubeVideoId]);
 
   useEffect(() => {
-    if (!isYouTube) return;
-    if (isPlaying) youtubePlayer.play(); else youtubePlayer.pause();
-  }, [isPlaying, isYouTube]);
+    if (!isYouTube || !youtubeReady) return;
+    if (!isPlaying) youtubePlayer.pause();
+  }, [isPlaying, isYouTube, youtubeReady]);
 
   if (!currentSong) return null;
 
@@ -76,7 +96,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const seekFromClientX = (clientX: number) => { const rect = progressRef.current?.getBoundingClientRect(); if (!rect || rect.width <= 0) return; seekTo(((clientX - rect.left) / rect.width) * duration); };
   const skip = (amount: number) => seekTo(position + amount);
   const handleProgressPointerDown = (event: React.PointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); seekFromClientX(event.clientX); };
-  const handleTogglePlay = () => onTogglePlay();
+  const handleTogglePlay = () => {
+    // Critical: call YouTube directly inside the user's tap/click event. Calling
+    // playVideo only from a later React effect can be blocked by mobile autoplay policy.
+    if (isYouTube) {
+      if (isPlaying) youtubePlayer.pause();
+      else youtubePlayer.play();
+    }
+    onTogglePlay();
+  };
   const toggleLike = () => { setIsLiked((value) => !value); setIsDisliked(false); };
   const toggleDislike = () => { setIsDisliked((value) => !value); setIsLiked(false); };
 
@@ -90,12 +118,10 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
       <div className="mx-auto w-full max-w-[1600px] px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:py-2.5">
         {isYouTube && (
           <div className="mb-2 flex justify-center">
-            <div
-              className="relative shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black shadow-lg"
-              style={{ width: 'min(230px, calc(100vw - 32px))', aspectRatio: '16 / 9', maxHeight: '130px' }}
-              aria-label="Now playing video"
-            >
+            <div className="relative shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black shadow-lg" style={{ width: 'min(230px, calc(100vw - 32px))', aspectRatio: '16 / 9', maxHeight: '130px' }} aria-label="Now playing video">
               <div ref={youtubeHostRef} className="absolute inset-0 h-full w-full" />
+              {!youtubeReady && <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-zinc-400">Loading player…</div>}
+              {youtubeError && <div className="absolute inset-0 grid place-items-center bg-black/80 px-3 text-center text-[10px] text-rose-300">{youtubeError}</div>}
             </div>
           </div>
         )}
