@@ -1,9 +1,6 @@
 import type { Song, Playlist, UserProfile } from '../types';
+import { installYouTubePlaybackAdapter } from '../services/youtubePlaybackAdapter';
 
-/**
- * Remove state created by the old AI-generated demo catalog without touching
- * real YouTube imports (which use yt-* ids). This runs before App initializes.
- */
 function migrateAwayFromDemoCatalog() {
   if (typeof window === 'undefined') return;
   const isDemoSongId = (id: string) => id.startsWith('song-');
@@ -36,26 +33,19 @@ function migrateAwayFromDemoCatalog() {
     if (!rawProfile) {
       const cleanProfile: UserProfile = {
         id: 'user-' + Math.random().toString(36).slice(2, 9),
-        name: 'You',
-        avatar: '',
-        statusMessage: '',
-        presenceMode: 'available-to-join',
-        language: 'en',
-        theme: 'neon-obsidian',
-        quality: 'high-320k',
-        isWifiOnlyDownloads: false,
-        favoriteGenres: [],
-        stats: { minutesListened: 0, sessionsJoined: 0, focusHours: 0, streakDays: 0 },
+        name: 'You', avatar: '', statusMessage: '', presenceMode: 'available-to-join',
+        language: 'en', theme: 'neon-obsidian', quality: 'high-320k', isWifiOnlyDownloads: false,
+        favoriteGenres: [], stats: { minutesListened: 0, sessionsJoined: 0, focusHours: 0, streakDays: 0 },
       };
       localStorage.setItem('syncbeat_user_profile', JSON.stringify(cleanProfile));
     }
   } catch {}
 
-  // Search starts empty rather than showing fabricated history.
   try { localStorage.setItem('syncbeat_recent_searches', '[]'); } catch {}
 }
 
 migrateAwayFromDemoCatalog();
+installYouTubePlaybackAdapter();
 
 /** No bundled/demo music. Real tracks come from YouTube search/import flows. */
 export const initialSongs: Song[] = [];
