@@ -29,10 +29,7 @@ class YouTubePlayerController {
     this.apiPromise = new Promise((resolve, reject) => {
       const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
       const previous = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        previous?.();
-        resolve();
-      };
+      window.onYouTubeIframeAPIReady = () => { previous?.(); resolve(); };
       if (!existing) {
         const script = document.createElement('script');
         script.src = 'https://www.youtube.com/iframe_api';
@@ -40,9 +37,7 @@ class YouTubePlayerController {
         script.onerror = () => reject(new Error('Unable to load YouTube IFrame API'));
         document.head.appendChild(script);
       }
-      window.setTimeout(() => {
-        if (window.YT?.Player) resolve();
-      }, 8000);
+      window.setTimeout(() => { if (window.YT?.Player) resolve(); }, 8000);
     });
     return this.apiPromise;
   }
@@ -57,7 +52,8 @@ class YouTubePlayerController {
         height: '100%',
         playerVars: {
           autoplay: 0,
-          controls: 1,
+          controls: 0,
+          disablekb: 1,
           playsinline: 1,
           rel: 0,
           fs: 0,
@@ -96,17 +92,17 @@ class YouTubePlayerController {
   play() { this.player?.playVideo?.(); }
   pause() { this.player?.pauseVideo?.(); }
   seek(seconds: number) { this.player?.seekTo?.(Math.max(0, seconds), true); }
-  setRate(rate: number) { this.player?.setPlaybackRate?.(rate); }
+  setRate(rate: number) { this.player?.setPlaybackRate?.(Math.max(0.25, Math.min(2, rate))); }
   setVolume(volume: number) { this.player?.setVolume?.(Math.round(Math.max(0, Math.min(1, volume)) * 100)); }
   mute() { this.player?.mute?.(); }
   unmute() { this.player?.unMute?.(); }
 
   getCurrentTime() {
-    return typeof this.player?.getCurrentTime === 'function' ? this.player.getCurrentTime() : this.state.currentTime;
+    return typeof this.player?.getCurrentTime === 'function' ? Number(this.player.getCurrentTime() || 0) : this.state.currentTime;
   }
 
   getDuration() {
-    return typeof this.player?.getDuration === 'function' ? this.player.getDuration() : this.state.duration;
+    return typeof this.player?.getDuration === 'function' ? Number(this.player.getDuration() || 0) : this.state.duration;
   }
 
   private startTicker() {
@@ -119,7 +115,7 @@ class YouTubePlayerController {
   }
 
   private stopTicker() {
-    if (this.ticker) window.clearInterval(this.ticker);
+    if (this.ticker !== null) window.clearInterval(this.ticker);
     this.ticker = null;
   }
 }
