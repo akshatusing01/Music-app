@@ -1,131 +1,141 @@
-import { audioEngine } from './audioEngine';
 import type { Song } from '../types';
+import { audioEngine } from './audioEngine';
 
 declare global {
-  interface Window { YT?: any; onYouTubeIframeAPIReady?: () => void; }
+  interface Window {
+    YT?: any;
+    onYouTubeIframeAPIReady?: () => void;
+  }
 }
-
-const OFFICIAL_VIDEO_IDS: Record<string, string> = {
-  'song-tum-hi-ho': 'Umqb9KENgmk',
-  'song-kesariya': 'BddP6PYo2gs',
-  'song-perfect': '2Vv-BfVoq4g',
-  'song-until-i-found-you': 'GxldQ9eX2wo',
-};
 
 let installed = false;
 let player: any = null;
+let apiPromise: Promise<void> | null = null;
 let playerReady = false;
-let playerPromise: Promise<void> | null = null;
 let activeSong: Song | null = null;
 let activeYoutubeId: string | null = null;
-let isYoutubePlaying = false;
-let playbackRate = 1;
-let positionTimer: number | null = null;
-let originalMethods: any = null;
+let playing = false;
+let rate = 1;
+let position = 0;
+let ticker: number | null = null;
 
-function getYoutubeId(song: Song): string | null {
-  if (song.youtubeVideoId) return song.youtubeVideoId;
-  if (OFFICIAL_VIDEO_IDS[song.id]) return OFFICIAL_VIDEO_IDS[song.id];
-  const imported = song.id.match(/^yt-([A-Za-z0-9_-]{11})-\d+$/);
-  if (imported?.[1]) return imported[1];
-  const searched = song.id.match(/^yt-search-([A-Za-z0-9_-]{11})$/);
-  return searched?.[1] || null;
+const positionListeners = new Set<(position: number) => void>();
+const endedListeners = new Set<() => void>();
+
+const original = {
+  playSong: audioEngine.playSong.bind(audioEngine),
+  pause: audioEngine.pause.bind(audioEngine),
+  resume: audioEngine.resume.bind(audioEngine),
+  seek: audioEngine.seek.bind(audioEngine),
+  getCurrentPosition: audioEngine.getCurrentPosition.bind(audioEngine),
+  setPlaybackRate: audioEngine.setPlaybackRate.bind(audioEngine),
+  setVolume: audioEngine.setVolume.bind(audioEngine),
+  onPositionChange: audioEngine.onPositionChange.bind(audioEngine),
+  onEnded: audioEngine.onEnded.bind(audioEngine),
+};
+
+function isYouTubeSong(song: Song | null): boolean {
+  return Boolean(song?.youtubeVideoId || song?.id.match(/^yt(?:-search)?-[A-Za-z0-9_-]{11}(?:-\d+)?$/));
 }
 
-function loadYouTubeAPI(): Promise<void> {
-  if (typeof window === 'undefined') return Promise.resolve();
+function getVideoId(song: Song): string | null {
+  if (song.youtubeVideoId) return song.youtubeVideoId;
+  const match = song.id.match(/^yt-search-([A-Za-z0-9_-]{11})$/) || song.id.match(/^yt-([A-Za-z0-9_-]{11})-\d+$/);
+  return match?.[1] || null;
+}
+
+function loadApi(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('YouTube playback requires a browser.'));
   if (window.YT?.Player) return Promise.resolve();
-  if (playerPromise) return playerPromise;
-  playerPromise = new Promise((resolve) => {
+  if (apiPromise) return apiPromise;
+
+  apiPromise = new Promise<void>((resolve, reject) => {
     const previous = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => { previous?.(); resolve(); };
-    const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
-    if (!existing) {
-      const script = document.createElement('script');
-      script.src = 'https://www.youtube.com/iframe_api';
-      script.async = true;
-      document.head.appendChild(script);
-    }
+    const script = document.querySelector('script[data-syncbeat-youtube-api]');
+    if (script) return;
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    tag.async = true;
+    tag.dataset.syncbeatYoutubeApi = 'true';
+    tag.onerror = () => reject(new Error('Unable to load the YouTube IFrame API.'));
+    document.head.appendChild(tag);
   });
-  return playerPromise;
+  return apiPromise;
 }
 
-function ensureContainer(): HTMLElement {
+function ensureVisibleContainer(): HTMLElement {
   let container = document.getElementById('syncbeat-youtube-player');
   if (container) return container;
   container = document.createElement('div');
   container.id = 'syncbeat-youtube-player';
+  container.setAttribute('aria-label', 'YouTube music player');
   Object.assign(container.style, {
-    position: 'fixed',
-    right: '16px',
-    bottom: '96px',
-    width: '200px',
-    height: '200px',
-    background: '#000',
-    borderRadius: '16px',
-    overflow: 'hidden',
-    boxShadow: '0 20px 60px rgba(0,0,0,.45)',
-    zIndex: '60',
+    position: 'fixed', right: '16px', bottom: '82px',
+    width: 'min(360px, calc(100vw - 32px))', aspectRatio: '16 / 9',
+    background: '#000', borderRadius: '14px', overflow: 'hidden',
+    border: '1px solid rgba(255,255,255,.14)',
+    boxShadow: '0 20px 60px rgba(0,0,0,.55)', zIndex: '55',
   });
   document.body.appendChild(container);
   return container;
 }
 
-function stopPositionTimer() {
-  if (positionTimer !== null) { window.clearInterval(positionTimer); positionTimer = null; }
+function stopTicker() {
+  if (ticker !== null) window.clearInterval(ticker);
+  ticker = null;
 }
 
-function startPositionTimer() {
-  stopPositionTimer();
-  positionTimer = window.setInterval(() => {
-    if (!player || !playerReady || !isYoutubePlaying) return;
-  }, 100);
+function startTicker() {
+  stopTicker();
+  ticker = window.setInterval(() => {
+    if (!playing || !player || !playerReady || !activeSong) return;
+    try {
+      position = Number(player.getCurrentTime?.() || 0);
+      positionListeners.forEach((listener) => listener(position));
+    } catch {}
+  }, 200);
 }
 
-async function ensurePlayer(videoId: string): Promise<any> {
-  await loadYouTubeAPI();
+async function ensurePlayer(videoId: string) {
+  await loadApi();
+
   if (!player) {
-    player = new window.YT!.Player(ensureContainer(), {
-      width: '200',
-      height: '200',
-      videoId,
-      playerVars: {
-        autoplay: 0,
-        controls: 1,
-        disablekb: 0,
-        fs: 1,
-        playsinline: 1,
-        rel: 1,
-      },
+    player = new window.YT!.Player(ensureVisibleContainer(), {
+      width: '100%', height: '100%', videoId,
+      playerVars: { controls: 1, playsinline: 1, rel: 1, fs: 1, modestbranding: 1, origin: window.location.origin },
       events: {
-        onReady: () => {
-          playerReady = true;
-          if (activeYoutubeId) player.cueVideoById(activeYoutubeId);
-        },
+        onReady: () => { playerReady = true; },
         onStateChange: (event: any) => {
-          const state = event.data;
-          isYoutubePlaying = state === window.YT.PlayerState.PLAYING;
-          if (state === window.YT.PlayerState.ENDED) {
-            isYoutubePlaying = false;
-            stopPositionTimer();
-            const originalPause = originalMethods?.pause;
-            if (originalPause) originalPause.call(audioEngine);
+          if (event.data === window.YT!.PlayerState.PLAYING) {
+            playing = true;
+            startTicker();
+          } else if (event.data === window.YT!.PlayerState.PAUSED) {
+            playing = false;
+            stopTicker();
+          } else if (event.data === window.YT!.PlayerState.ENDED) {
+            playing = false;
+            stopTicker();
+            if (activeSong) position = activeSong.duration;
+            positionListeners.forEach((listener) => listener(position));
+            endedListeners.forEach((listener) => listener());
           }
         },
-        onAutoplayBlocked: () => {
-          isYoutubePlaying = false;
-          stopPositionTimer();
-        },
         onError: (event: any) => {
+          playing = false;
+          stopTicker();
           console.warn('YouTube embedded playback error:', event?.data);
-          isYoutubePlaying = false;
         },
       },
     });
+    await new Promise<void>((resolve) => {
+      const wait = () => playerReady ? resolve() : window.setTimeout(wait, 50);
+      wait();
+    });
   } else if (activeYoutubeId !== videoId) {
-    playerReady = false;
-    player.loadVideoById(videoId);
+    playerReady = true;
   }
+
   activeYoutubeId = videoId;
   return player;
 }
@@ -134,68 +144,75 @@ export function installYouTubePlaybackAdapter() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
 
-  originalMethods = {
-    playSong: audioEngine.playSong,
-    pause: audioEngine.pause,
-    resume: audioEngine.resume,
-    seek: audioEngine.seek,
-    getCurrentPosition: audioEngine.getCurrentPosition,
-    setPlaybackRate: audioEngine.setPlaybackRate,
-    setVolume: audioEngine.setVolume,
-  };
-
-  audioEngine.playSong = async function (song: Song, startFromSeconds = 0, rate = 1) {
-    const videoId = getYoutubeId(song);
-    if (!videoId) {
+  audioEngine.playSong = async (song: Song, startFromSeconds = 0, playbackRate = 1) => {
+    if (!isYouTubeSong(song)) {
       activeSong = null;
-      isYoutubePlaying = false;
-      stopPositionTimer();
-      return originalMethods.playSong.call(audioEngine, song, startFromSeconds, rate);
+      return original.playSong(song, startFromSeconds, playbackRate);
     }
 
+    const videoId = getVideoId(song);
+    if (!videoId) return;
     activeSong = song;
-    playbackRate = rate;
+    rate = playbackRate;
+    position = Math.max(0, startFromSeconds);
     const yt = await ensurePlayer(videoId);
-    playerReady = true;
-    yt.setPlaybackRate?.(rate);
-    yt.loadVideoById({ videoId, startSeconds: Math.max(0, startFromSeconds) });
     activeYoutubeId = videoId;
-    isYoutubePlaying = true;
-    startPositionTimer();
+    yt.setPlaybackRate?.(playbackRate);
+    yt.loadVideoById({ videoId, startSeconds: position });
+    playing = true;
+    startTicker();
+    positionListeners.forEach((listener) => listener(position));
   };
 
-  audioEngine.pause = function () {
-    if (!activeSong || !getYoutubeId(activeSong) || !player || !playerReady) return originalMethods.pause.call(audioEngine);
-    try { player.pauseVideo(); isYoutubePlaying = false; stopPositionTimer(); } catch {}
+  audioEngine.pause = () => {
+    if (!isYouTubeSong(activeSong) || !player) return original.pause();
+    position = Number(player.getCurrentTime?.() || position);
+    player.pauseVideo?.();
+    playing = false;
+    stopTicker();
   };
 
-  audioEngine.resume = function () {
-    if (!activeSong || !getYoutubeId(activeSong) || !player || !playerReady) return originalMethods.resume.call(audioEngine);
-    try { player.playVideo(); player.setPlaybackRate?.(playbackRate); isYoutubePlaying = true; startPositionTimer(); } catch {}
-  };
-
-  audioEngine.seek = function (seconds: number) {
-    if (!activeSong || !getYoutubeId(activeSong) || !player || !playerReady) return originalMethods.seek.call(audioEngine, seconds);
-    player.seekTo(Math.max(0, Math.min(seconds, activeSong.duration)), true);
-  };
-
-  audioEngine.getCurrentPosition = function () {
-    if (!activeSong || !getYoutubeId(activeSong) || !player || !playerReady) return originalMethods.getCurrentPosition.call(audioEngine);
-    try { return Math.max(0, Math.min(Number(player.getCurrentTime?.() || 0), activeSong.duration)); } catch { return 0; }
-  };
-
-  audioEngine.setPlaybackRate = function (rate: number) {
-    playbackRate = rate;
-    if (!activeSong || !getYoutubeId(activeSong) || !player || !playerReady) return originalMethods.setPlaybackRate.call(audioEngine, rate);
+  audioEngine.resume = () => {
+    if (!isYouTubeSong(activeSong) || !player) return original.resume();
+    player.playVideo?.();
     player.setPlaybackRate?.(rate);
+    playing = true;
+    startTicker();
   };
 
-  audioEngine.setVolume = function (volume: number) {
-    if (!activeSong || !getYoutubeId(activeSong) || !player || !playerReady) return originalMethods.setVolume.call(audioEngine, volume);
-    player.setVolume(Math.max(0, Math.min(1, volume)) * 100);
+  audioEngine.seek = (seconds: number) => {
+    if (!isYouTubeSong(activeSong) || !player) return original.seek(seconds);
+    position = Math.max(0, Math.min(seconds, activeSong?.duration || seconds));
+    player.seekTo?.(position, true);
+    positionListeners.forEach((listener) => listener(position));
   };
 
-  void loadYouTubeAPI();
+  audioEngine.getCurrentPosition = () => {
+    if (!isYouTubeSong(activeSong) || !player) return original.getCurrentPosition();
+    try { position = Number(player.getCurrentTime?.() || position); } catch {}
+    return position;
+  };
+
+  audioEngine.setPlaybackRate = (newRate: number) => {
+    rate = newRate;
+    if (!isYouTubeSong(activeSong) || !player) return original.setPlaybackRate(newRate);
+    player.setPlaybackRate?.(newRate);
+  };
+
+  audioEngine.setVolume = (volume: number) => {
+    if (!isYouTubeSong(activeSong) || !player) return original.setVolume(volume);
+    player.setVolume?.(Math.round(Math.max(0, Math.min(1, volume)) * 100));
+  };
+
+  audioEngine.onPositionChange = (listener: (position: number) => void) => {
+    positionListeners.add(listener);
+    return () => positionListeners.delete(listener);
+  };
+
+  audioEngine.onEnded = (listener: () => void) => {
+    endedListeners.add(listener);
+    return () => endedListeners.delete(listener);
+  };
+
+  void loadApi().catch(() => {});
 }
-
-export { OFFICIAL_VIDEO_IDS };
