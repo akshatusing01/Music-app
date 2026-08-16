@@ -49,7 +49,11 @@ wss.on('connection', (ws) => {
         room.lastStateUpdate = Date.now();
         broadcast(room, 'PLAYBACK_SYNC', { currentSongId: room.currentSongId, songId: room.currentSongId, isPlaying: room.isPlaying, playbackPosition: room.playbackPosition, position: room.playbackPosition, playbackRate: room.playbackRate, lastStateUpdate: room.lastStateUpdate, actionBy: participantId }); return;
       }
-      if (type === 'QUEUE_UPDATE') { const queue = Array.isArray(payload.queue) ? payload.queue.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0).slice(0, 100) : []; room.queue = [...new Set(queue)]; broadcast(room, 'QUEUE_SYNC', { queue: room.queue }); return; }
+      if (type === 'QUEUE_UPDATE') {
+        const rawQueue: unknown[] = Array.isArray(payload.queue) ? payload.queue : [];
+        const queue: string[] = rawQueue.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0).slice(0, 100);
+        room.queue = [...new Set(queue)]; broadcast(room, 'QUEUE_SYNC', { queue: room.queue }); return;
+      }
       if (type === 'SEND_CHAT') {
         const text = String(payload.text || '').trim().slice(0, 1000); if (!text) return;
         const msg = { id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, senderId: participantId, senderName: String(payload.senderName || 'Listener').slice(0, 40), senderAvatar: String(payload.senderAvatar || '').slice(0, 500), text, type: payload.type || 'text', timestamp: Date.now(), reactionEmoji: payload.reactionEmoji, soundName: payload.soundName };
