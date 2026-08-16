@@ -71,16 +71,18 @@ class YouTubePlayerController {
           autoplay: 0,
           controls: 0,
           disablekb: 1,
+          enablejsapi: 1,
           playsinline: 1,
           rel: 0,
           fs: 0,
           iv_load_policy: 3,
-          modestbranding: 1,
           origin: window.location.origin,
         },
         events: {
           onReady: () => {
             this.ready = true;
+            const iframe = this.host?.querySelector('iframe');
+            if (iframe) iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
             this.emit('syncbeat:youtube-ready');
             this.flushPendingLoad();
           },
@@ -88,7 +90,7 @@ class YouTubePlayerController {
             const playing = event.data === window.YT.PlayerState.PLAYING;
             const ended = event.data === window.YT.PlayerState.ENDED;
             this.state.isPlaying = playing;
-            this.emit('syncbeat:youtube-state', { ...this.state });
+            this.emit('syncbeat:youtube-state', { ...this.state, videoId: this.videoId });
             if (ended) {
               this.desiredPlaying = false;
               this.stopTicker();
@@ -100,8 +102,14 @@ class YouTubePlayerController {
               this.stopTicker();
             }
           },
+          onAutoplayBlocked: () => {
+            this.desiredPlaying = false;
+            this.state.isPlaying = false;
+            this.emit('syncbeat:youtube-autoplay-blocked', { videoId: this.videoId });
+          },
           onError: (event: any) => {
             this.desiredPlaying = false;
+            this.state.isPlaying = false;
             this.emit('syncbeat:youtube-error', { code: event.data, videoId: this.videoId });
           },
         },
@@ -120,8 +128,6 @@ class YouTubePlayerController {
       rate: Math.max(0.25, Math.min(2, rate)),
     };
 
-    // React can request a track before the async iframe has finished mounting.
-    // Keep the request and execute it from onReady instead of silently dropping it.
     if (!this.player || !this.ready) {
       this.pendingLoad = request;
       return;
@@ -138,7 +144,10 @@ class YouTubePlayerController {
 
     this.pendingLoad = null;
     this.videoId = request.videoId;
+    this.state.currentTime = request.startSeconds;
+    this.state.isPlaying = false;
     this.player.setPlaybackRate?.(request.rate);
+    this.emit('syncbeat:youtube-state', { ...this.state, videoId: this.videoId });
 
     if (request.autoplay) {
       this.player.loadVideoById({
@@ -155,17 +164,15 @@ class YouTubePlayerController {
 
   private flushPendingLoad() {
     if (this.pendingLoad) this.applyLoad(this.pendingLoad);
-    if (this.desiredPlaying) {
-      // If the browser allowed the user's initiating gesture to reach the iframe,
-      // this starts immediately. If autoplay is blocked, the explicit Play button
-      // remains available and calls play() from a user gesture.
-      window.setTimeout(() => this.player?.playVideo?.(), 0);
-    }
   }
 
   play() {
     this.desiredPlaying = true;
-    this.player?.playVideo?.();
+    if (!this.player || !this.ready) {
+      this.desiredPlaying = true;
+      return;
+    }
+    this.player.playVideo?.();
   }
 
   pause() {
@@ -177,7 +184,7 @@ class YouTubePlayerController {
     const target = Math.max(0, seconds);
     this.player?.seekTo?.(target, true);
     this.state.currentTime = target;
-    this.emit('syncbeat:youtube-position', { ...this.state });
+    this.emit('syncbeat:youtube-position', { ...this.state, videoId: this.videoId });
   }
 
   setRate(rate: number) {
@@ -203,12 +210,16 @@ class YouTubePlayerController {
       : this.state.duration;
   }
 
+  isActuallyPlaying() {
+    return this.state.isPlaying;
+  }
+
   private startTicker() {
     this.stopTicker();
     this.ticker = window.setInterval(() => {
       this.state.currentTime = this.getCurrentTime();
       this.state.duration = this.getDuration();
-      this.emit('syncbeat:youtube-position', { ...this.state });
+      this.emit('syncbeat:youtube-position', { ...this.state, videoId: this.videoId });
     }, 250);
   }
 
