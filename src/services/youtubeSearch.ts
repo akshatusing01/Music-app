@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import type { Song, SupportedLanguage } from '../types';
 import { initialSongs } from '../data/songs';
 
@@ -28,12 +30,6 @@ function inferLanguage(title: string): { language: SupportedLanguage | 'multi'; 
   return { language: 'en', label: 'English / International' };
 }
 
-/**
- * Keep the current in-memory catalog aware of real search results. App state
- * intentionally starts empty, but it shares this array reference, allowing a
- * freshly searched YouTube track to participate in queue and room sync in the
- * same session without shipping demo tracks.
- */
 function rememberRealTracks(songs: Song[]) {
   const existing = new Set(initialSongs.map((song) => song.id));
   songs.forEach((song) => {
@@ -98,12 +94,11 @@ export async function searchYouTubeMusic(query: string, maxResults = 15): Promis
         coverArt,
         language: lang.language,
         languageLabel: lang.label,
-        mood: 'chill',
-        tags: ['YouTube', 'Online', 'Search Result'],
-        youtubeVideoId: item.id,
-        lyrics: [],
-        sourceProvider: 'YouTube',
-      } satisfies Song;
+        mood: ['vibe'],
+        genre: 'YouTube',
+        source: 'youtube',
+        sourceId: item.id,
+      } as Song;
     });
 
   rememberRealTracks(songs);
