@@ -1,4 +1,4 @@
-import { RoomState, ChatMessage, FloatingReaction, RoomParticipant } from '../types';
+import { RoomState, ChatMessage } from '../types';
 
 export type WebSocketEventListener = (event: { type: string; payload: any }) => void;
 
@@ -9,28 +9,26 @@ export class WebSocketClient {
   private reconnectTimeout: number | null = null;
   private currentRoomId: string | null = null;
   private currentParticipant: { id: string; name: string; avatar: string } | null = null;
-  private isExplicitlyClosed: boolean = false;
-  private latencyMs: number = 0;
+  private currentRoomOptions: { roomName?: string; moodTheme?: string; initialSongId?: string; isPublic?: boolean } | undefined;
+  private isExplicitlyClosed = false;
+  private latencyMs = 0;
   private pingInterval: number | null = null;
 
   private constructor() {}
 
   public static getInstance(): WebSocketClient {
-    if (!WebSocketClient.instance) {
-      WebSocketClient.instance = new WebSocketClient();
-    }
+    if (!WebSocketClient.instance) WebSocketClient.instance = new WebSocketClient();
     return WebSocketClient.instance;
   }
 
   public connect(roomId: string, participant: { id: string; name: string; avatar: string }, options?: { roomName?: string; moodTheme?: string; initialSongId?: string; isPublic?: boolean }) {
     this.currentRoomId = roomId;
     this.currentParticipant = participant;
+    this.currentRoomOptions = options;
     this.isExplicitlyClosed = false;
 
     if (this.ws) {
-      try {
-        this.ws.close();
-      } catch (e) {}
+      try { this.ws.close(); } catch {}
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -38,9 +36,7 @@ export class WebSocketClient {
 
     try {
       this.ws = new WebSocket(wsUrl);
-
       this.ws.onopen = () => {
-        // Send JOIN_ROOM message
         this.send('JOIN_ROOM', {
           roomId,
           payload: {
@@ -51,7 +47,6 @@ export class WebSocketClient {
             isPublic: options?.isPublic,
           },
         });
-
         this.startPing();
       };
 
@@ -59,11 +54,16 @@ export class WebSocketClient {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'PONG') {
-            const now = Date.now();
-            this.latencyMs = Math.max(8, now - data.timestamp);
-          } else {
-            this.listeners.forEach((listener) => listener(data));
+            this.latencyMs = Math.max(8, Date.now() - data.timestamp);
+            return;
           }
+
+          // The server calls this field currentSongId; the existing app shell expects songId.
+          if (data.type === 'PLAYBACK_SYNC' && data.payload) {
+            data.payload.songId = data.payload.songId || data.payload.currentSongId;
+          }
+
+          this.listeners.forEach((listener) => listener(data));
         } catch (err) {
           console.error('Error handling WebSocket message:', err);
         }
@@ -72,19 +72,16 @@ export class WebSocketClient {
       this.ws.onclose = () => {
         this.stopPing();
         if (!this.isExplicitlyClosed) {
-          // Attempt auto-reconnect after 2 seconds
           if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
           this.reconnectTimeout = window.setTimeout(() => {
             if (this.currentRoomId && this.currentParticipant) {
-              this.connect(this.currentRoomId, this.currentParticipant, options);
+              this.connect(this.currentRoomId, this.currentParticipant, this.currentRoomOptions);
             }
-          }, 2000);
+          }, 1500);
         }
       };
 
-      this.ws.onerror = (err) => {
-        console.warn('WebSocket connection notice:', err);
-      };
+      this.ws.onerror = (err) => console.warn('WebSocket connection notice:', err);
     } catch (err) {
       console.error('Failed to initialize WebSocket:', err);
     }
@@ -98,12 +95,11 @@ export class WebSocketClient {
       this.reconnectTimeout = null;
     }
     if (this.ws) {
-      try {
-        this.ws.close();
-      } catch (e) {}
+      try { this.ws.close(); } catch {}
       this.ws = null;
     }
     this.currentRoomId = null;
+    this.currentRoomOptions = undefined;
   }
 
   public addListener(listener: WebSocketEventListener) {
@@ -112,14 +108,12 @@ export class WebSocketClient {
   }
 
   public send(type: string, data: any) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({
-          type,
-          roomId: this.currentRoomId,
-          payload: data.payload !== undefined ? data.payload : data,
-        })
-      );
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type,
+        roomId: this.currentRoomId,
+        payload: data.payload !== undefined ? data.payload : data,
+      }));
     }
   }
 
@@ -130,10 +124,11 @@ export class WebSocketClient {
     playbackRate?: number;
     senderName?: string;
   }) {
-    this.send('PLAYBACK_ACTION', {
-      action,
-      ...params,
-    });
+    this.send('PLAYBACK_ACTION', { action, ...params });
+  }
+
+  public updateQueue(queue: string[]) {
+    this.send('QUEUE_UPDATE', { queue });
   }
 
   public sendChatMessage(text: string, options?: { type?: 'text' | 'reaction' | 'sound'; reactionEmoji?: string; soundName?: string }) {
@@ -166,28 +161,19 @@ export class WebSocketClient {
     remaining?: number;
     isRunning?: boolean;
   }) {
-    this.send('FOCUS_TIMER_ACTION', {
-      action,
-      ...payload,
-    });
+    this.send('FOCUS_TIMER_ACTION', { action, ...payload });
   }
 
-  public getLatency(): number {
-    return this.latencyMs || 24;
-  }
+  public getLatency(): number { return this.latencyMs || 24; }
 
-  public createRoom(roomName: string, hostName: string, moodTheme: string = 'love', isPrivate: boolean = false) {
+  public createRoom(roomName: string, hostName: string, moodTheme = 'love', isPrivate = false) {
     const roomId = 'room-' + Math.random().toString(36).substring(2, 8);
     const participant = {
       id: this.currentParticipant?.id || 'host-' + Math.random().toString(36).substring(2, 6),
       name: hostName,
       avatar: this.currentParticipant?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
     };
-    this.connect(roomId, participant, {
-      roomName,
-      moodTheme,
-      isPublic: !isPrivate,
-    });
+    this.connect(roomId, participant, { roomName, moodTheme, isPublic: !isPrivate });
   }
 
   public joinRoom(roomId: string, name: string, avatar: string) {
@@ -199,16 +185,12 @@ export class WebSocketClient {
     this.connect(roomId, participant);
   }
 
-  public leaveRoom() {
-    this.disconnect();
-  }
+  public leaveRoom() { this.disconnect(); }
 
   private startPing() {
     this.stopPing();
     this.pingInterval = window.setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
-      }
+      if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
     }, 10000);
   }
 
