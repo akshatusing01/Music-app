@@ -24,9 +24,10 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const [youtubePosition, setYoutubePosition] = useState(0);
   const [youtubeDuration, setYoutubeDuration] = useState(0);
   const [youtubeReady, setYoutubeReady] = useState(false);
-  const [youtubeError, setYoutubeError] = useState<string | null>(null);
+  const [youtubeBlocked, setYoutubeBlocked] = useState(false);
   const progressRef = useRef<HTMLDivElement>(null);
   const youtubeHostRef = useRef<HTMLDivElement>(null);
+  const youtubeSongRef = useRef<string | null>(null);
   const isYouTube = Boolean(currentSong?.youtubeVideoId);
 
   useEffect(() => {
@@ -40,21 +41,20 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   useEffect(() => {
     if (!youtubeHostRef.current) return;
     const ready = () => setYoutubeReady(true);
-    const error = (event: Event) => {
-      const detail = (event as CustomEvent<{ code?: number }>).detail;
-      setYoutubeError(detail?.code ? `YouTube player error ${detail.code}` : 'Unable to play this video');
+    const blocked = () => {
+      setYoutubeBlocked(true);
+      // If the app optimistically marked the track as playing, return the app
+      // state to paused so the next tap is a real user-gesture play.
+      if (isPlaying) onTogglePlay();
     };
     window.addEventListener('syncbeat:youtube-ready', ready);
-    window.addEventListener('syncbeat:youtube-error', error);
-    youtubePlayer.mount(youtubeHostRef.current).catch((err) => {
-      console.warn('YouTube player initialization failed', err);
-      setYoutubeError('YouTube player could not initialize');
-    });
+    window.addEventListener('syncbeat:youtube-autoplay-blocked', blocked);
+    youtubePlayer.mount(youtubeHostRef.current).catch((error) => console.warn('YouTube player initialization failed', error));
     return () => {
       window.removeEventListener('syncbeat:youtube-ready', ready);
-      window.removeEventListener('syncbeat:youtube-error', error);
+      window.removeEventListener('syncbeat:youtube-autoplay-blocked', blocked);
     };
-  }, []);
+  }, [isPlaying, onTogglePlay]);
 
   useEffect(() => {
     const onPosition = (event: Event) => {
@@ -68,12 +68,13 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
 
   useEffect(() => {
     if (!currentSong?.youtubeVideoId) return;
-    setYoutubeError(null);
+    youtubeSongRef.current = currentSong.id;
+    setYoutubeBlocked(false);
     setYoutubePosition(playbackPosition);
-    // Do not rely on effect-driven autoplay: mobile browsers can reject it because
-    // the original tap has already left the call stack. The explicit Play button
-    // below calls youtubePlayer.play() directly from the user's gesture.
-    youtubePlayer.load(currentSong.youtubeVideoId, playbackPosition, false, 1).catch((error) => console.warn('Unable to load YouTube track', error));
+    // Attempt the requested playback state. If the browser blocks scripted
+    // playback, the player emits youtube-autoplay-blocked and the UI returns
+    // to a real Play state. A later Play tap is a direct user gesture.
+    youtubePlayer.load(currentSong.youtubeVideoId, playbackPosition, isPlaying, 1).catch((error) => console.warn('Unable to load YouTube track', error));
   }, [currentSong?.id, currentSong?.youtubeVideoId]);
 
   useEffect(() => {
@@ -97,11 +98,15 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const skip = (amount: number) => seekTo(position + amount);
   const handleProgressPointerDown = (event: React.PointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); seekFromClientX(event.clientX); };
   const handleTogglePlay = () => {
-    // Critical: call YouTube directly inside the user's tap/click event. Calling
-    // playVideo only from a later React effect can be blocked by mobile autoplay policy.
     if (isYouTube) {
-      if (isPlaying) youtubePlayer.pause();
-      else youtubePlayer.play();
+      // Decide from the actual YouTube state, not the React state. A newly
+      // selected track can be marked playing by the app before the iframe is
+      // allowed to autoplay.
+      if (youtubePlayer.isActuallyPlaying()) {
+        youtubePlayer.pause();
+      } else {
+        youtubePlayer.play();
+      }
     }
     onTogglePlay();
   };
@@ -120,8 +125,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
           <div className="mb-2 flex justify-center">
             <div className="relative shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black shadow-lg" style={{ width: 'min(230px, calc(100vw - 32px))', aspectRatio: '16 / 9', maxHeight: '130px' }} aria-label="Now playing video">
               <div ref={youtubeHostRef} className="absolute inset-0 h-full w-full" />
-              {!youtubeReady && <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/60 text-[10px] text-zinc-400">Loading player…</div>}
-              {youtubeError && <div className="absolute inset-0 grid place-items-center bg-black/80 px-3 text-center text-[10px] text-rose-300">{youtubeError}</div>}
             </div>
           </div>
         )}
