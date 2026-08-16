@@ -26,7 +26,6 @@ class YouTubePlayerController {
   private loadApi(): Promise<void> {
     if (window.YT?.Player) return Promise.resolve();
     if (this.apiPromise) return this.apiPromise;
-
     this.apiPromise = new Promise((resolve, reject) => {
       const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
       const previous = window.onYouTubeIframeAPIReady;
@@ -52,19 +51,11 @@ class YouTubePlayerController {
     this.host = host;
     await this.loadApi();
     if (!this.host || !window.YT?.Player) return;
-
     if (!this.player) {
       this.player = new window.YT.Player(this.host, {
         width: '100%',
         height: '100%',
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-          playsinline: 1,
-          rel: 0,
-          modestbranding: 1,
-          origin: window.location.origin,
-        },
+        playerVars: { autoplay: 0, controls: 1, playsinline: 1, rel: 0, modestbranding: 1, origin: window.location.origin },
         events: {
           onReady: () => this.emit('syncbeat:youtube-ready'),
           onStateChange: (event: any) => {
@@ -75,11 +66,8 @@ class YouTubePlayerController {
             if (ended) {
               this.stopTicker();
               this.emit('syncbeat:youtube-ended', { videoId: this.videoId });
-            } else if (playing) {
-              this.startTicker();
-            } else {
-              this.stopTicker();
-            }
+            } else if (playing) this.startTicker();
+            else this.stopTicker();
           },
           onError: (event: any) => this.emit('syncbeat:youtube-error', { code: event.data, videoId: this.videoId }),
         },
@@ -92,22 +80,21 @@ class YouTubePlayerController {
     this.videoId = videoId;
     if (!this.player) return;
     this.player.setPlaybackRate?.(rate);
-    if (autoplay) {
-      this.player.loadVideoById({ videoId, startSeconds });
-    } else {
-      this.player.cueVideoById({ videoId, startSeconds });
-    }
+    if (autoplay) this.player.loadVideoById({ videoId, startSeconds });
+    else this.player.cueVideoById({ videoId, startSeconds });
   }
 
   play() { this.player?.playVideo?.(); }
   pause() { this.player?.pauseVideo?.(); }
   seek(seconds: number) { this.player?.seekTo?.(Math.max(0, seconds), true); }
   setRate(rate: number) { this.player?.setPlaybackRate?.(rate); }
+  setVolume(volume: number) { this.player?.setVolume?.(Math.round(Math.max(0, Math.min(1, volume)) * 100)); }
+  mute() { this.player?.mute?.(); }
+  unmute() { this.player?.unMute?.(); }
 
   getCurrentTime() {
     return typeof this.player?.getCurrentTime === 'function' ? this.player.getCurrentTime() : this.state.currentTime;
   }
-
   getDuration() {
     return typeof this.player?.getDuration === 'function' ? this.player.getDuration() : this.state.duration;
   }
@@ -120,7 +107,6 @@ class YouTubePlayerController {
       this.emit('syncbeat:youtube-position', { ...this.state });
     }, 250);
   }
-
   private stopTicker() {
     if (this.ticker) window.clearInterval(this.ticker);
     this.ticker = null;
