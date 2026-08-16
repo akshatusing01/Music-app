@@ -1,23 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import {
-  Search as SearchIcon,
-  X,
-  Play,
-  Pause,
-  Plus,
-  Heart,
-  Download,
-  Check,
-  TrendingUp,
-  Sparkles,
-  Music,
-  User,
-  ListMusic,
-  Radio,
-  Clock,
-  History,
-} from 'lucide-react';
-import { Song, Playlist, RoomState, SupportedLanguage } from '../../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search as SearchIcon, X, Play, Plus, Heart, Download, Check, TrendingUp, Sparkles, Music, ListMusic, Loader2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Song, Playlist, SupportedLanguage } from '../../types';
+import { searchYouTubeMusic } from '../../services/youtubeSearch';
 
 interface SearchViewProps {
   songs: Song[];
@@ -51,309 +35,284 @@ export const SearchView: React.FC<SearchViewProps> = ({
   downloadedSongIds,
   onToggleDownload,
   onSelectPlaylist,
-  onJoinRoom,
-  language,
 }) => {
-  const [filterType, setFilterType] = useState<'all' | 'songs' | 'artists' | 'playlists' | 'lyrics'>('all');
-  const [recentSearches, setRecentSearches] = useState<string[]>([
-    'Arijit Singh',
-    'Kesariya',
-    'Phonk Beast',
-    'Arabic Kuthu',
-    'Chai Lofi',
-  ]);
+  const [filterType, setFilterType] = useState<'all' | 'songs' | 'artists' | 'playlists'>('all');
+  const [youtubeSongs, setYoutubeSongs] = useState<Song[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('syncbeat_recent_searches');
+      return saved ? JSON.parse(saved) : ['Arijit Singh', 'Kesariya', 'Stephen Sanchez', 'Punjabi gym songs'];
+    } catch {
+      return ['Arijit Singh', 'Kesariya', 'Stephen Sanchez', 'Punjabi gym songs'];
+    }
+  });
 
-  const trendingTags = [
-    'Tum Hi Ho',
-    'Naatu Naatu',
-    'Kesariya',
-    'KGF Monster',
-    'Stephen Sanchez',
-    'Ed Sheeran',
-    'Kun Faya Kun',
-    'Tamil Kuthu',
-    'Monsoon Rain Sitar',
-  ];
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setYoutubeSongs([]);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
+    }
 
-  // Multilingual & Transliteration Aware Search matching
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return { songs: [], playlists: [], artists: [] };
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setIsSearching(true);
+      setSearchError(null);
+      try {
+        const result = await searchYouTubeMusic(query, 15);
+        if (!controller.signal.aborted) {
+          setYoutubeSongs(result.songs);
+          setRecentSearches((prev) => {
+            const next = [query, ...prev.filter((item) => item.toLowerCase() !== query.toLowerCase())].slice(0, 8);
+            try { localStorage.setItem('syncbeat_recent_searches', JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
+      } catch (error: any) {
+        if (!controller.signal.aborted) {
+          setYoutubeSongs([]);
+          setSearchError(error?.message || 'Unable to search YouTube right now.');
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsSearching(false);
+      }
+    }, 350);
 
-    const q = searchQuery.toLowerCase().trim();
-
-    const matchedSongs = songs.filter((s) => {
-      const matchTitle = s.title.toLowerCase().includes(q);
-      const matchArtist = s.artist.toLowerCase().includes(q);
-      const matchAlbum = s.album?.toLowerCase().includes(q);
-      const matchTags = s.tags.some((t) => t.toLowerCase().includes(q));
-      const matchLyrics = s.lyrics.some(
-        (l) =>
-          l.text.toLowerCase().includes(q) ||
-          l.transliteration?.toLowerCase().includes(q) ||
-          l.translation?.toLowerCase().includes(q)
-      );
-
-      return matchTitle || matchArtist || matchAlbum || matchTags || matchLyrics;
-    });
-
-    const matchedPlaylists = playlists.filter((p) => {
-      return (
-        p.title.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
-        p.mood.toLowerCase().includes(q)
-      );
-    });
-
-    // Unique artists matched
-    const artistSet = new Set<string>();
-    matchedSongs.forEach((s) => {
-      s.artist.split('•').forEach((a) => artistSet.add(a.trim()));
-    });
-
-    return {
-      songs: matchedSongs,
-      playlists: matchedPlaylists,
-      artists: Array.from(artistSet),
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
     };
-  }, [searchQuery, songs, playlists]);
+  }, [searchQuery]);
 
-  const handleSelectRecent = (term: string) => {
-    onSearchChange(term);
+  const localResults = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return [];
+    return songs.filter((s) =>
+      s.title.toLowerCase().includes(q) ||
+      s.artist.toLowerCase().includes(q) ||
+      s.album?.toLowerCase().includes(q) ||
+      s.tags.some((tag) => tag.toLowerCase().includes(q))
+    );
+  }, [searchQuery, songs]);
+
+  const searchResults = useMemo(() => {
+    const seen = new Set<string>();
+    return [...youtubeSongs, ...localResults].filter((song) => {
+      if (seen.has(song.id)) return false;
+      seen.add(song.id);
+      return true;
+    });
+  }, [youtubeSongs, localResults]);
+
+  const artists = useMemo(() => {
+    const result = new Set<string>();
+    searchResults.forEach((song) => song.artist.split('•').forEach((artist) => result.add(artist.trim())));
+    return Array.from(result);
+  }, [searchResults]);
+
+  const trendingTags = ['Tum Hi Ho', 'Arijit Singh', 'Kesariya', 'Stephen Sanchez', 'Ed Sheeran', 'Anirudh', 'Punjabi Hits', 'Gym Phonk'];
+
+  const selectRecent = (term: string) => onSearchChange(term);
+
+  const clearRecent = () => {
+    setRecentSearches([]);
+    try { localStorage.removeItem('syncbeat_recent_searches'); } catch {}
   };
 
-  const handleClearRecent = () => {
-    setRecentSearches([]);
+  const playSong = (song: Song) => {
+    onPlaySong(song);
   };
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
-      {/* Search Input Hero Section */}
-      <div className="relative rounded-3xl p-6 sm:p-8 bg-gradient-to-r from-rose-950/40 via-zinc-950/60 to-purple-950/40 border border-white/10 backdrop-blur-2xl space-y-4">
-        <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-          Search Music, Artists & Synced Lyrics
-        </h1>
-        <p className="text-xs text-zinc-400">
-          Typo-tolerant transliterated search across Bollywood, South Indian, Punjabi, and International tracks
-        </p>
+      <section className="relative overflow-hidden rounded-3xl p-6 sm:p-8 bg-gradient-to-r from-rose-950/40 via-zinc-950/70 to-purple-950/40 border border-white/10 backdrop-blur-2xl">
+        <div className="relative z-10 space-y-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-rose-300 font-bold">Live music search</p>
+            <h1 className="mt-2 text-2xl sm:text-3xl font-black text-white tracking-tight">Find something. Play it now.</h1>
+            <p className="mt-2 text-xs text-zinc-400">Searches YouTube in real time and only surfaces videos that can be embedded for playback.</p>
+          </div>
 
-        <div className="relative flex items-center max-w-2xl">
-          <SearchIcon size={20} className="absolute left-4 text-zinc-400 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Try 'Arijit Singh', 'Kesariya', 'Arabic Kuthu', 'Gym Phonk'..."
-            className="w-full pl-12 pr-10 py-3.5 rounded-2xl bg-black/60 hover:bg-black/80 focus:bg-black border border-white/15 focus:border-rose-500/60 text-sm text-white placeholder-zinc-400 outline-none transition-all shadow-inner"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => onSearchChange('')}
-              className="absolute right-3.5 p-1 rounded-full text-zinc-400 hover:text-white bg-white/10"
-            >
-              <X size={15} />
-            </button>
-          )}
+          <div className="relative flex items-center max-w-3xl">
+            <SearchIcon size={20} className="absolute left-4 text-zinc-400 pointer-events-none" />
+            <input
+              autoFocus
+              type="search"
+              value={searchQuery}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search songs, artists, albums, Bollywood, Punjabi, Tamil..."
+              className="w-full pl-12 pr-12 py-4 rounded-2xl bg-black/60 border border-white/15 focus:border-rose-500/70 text-sm text-white placeholder-zinc-500 outline-none transition-all"
+            />
+            {isSearching ? (
+              <Loader2 size={18} className="absolute right-4 text-rose-400 animate-spin" />
+            ) : searchQuery ? (
+              <button onClick={() => onSearchChange('')} className="absolute right-3 p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/10">
+                <X size={15} />
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto custom-scrollbar pt-1">
+            {[
+              ['all', 'All'],
+              ['songs', 'Songs'],
+              ['artists', 'Artists'],
+              ['playlists', 'Playlists'],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setFilterType(id as any)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition ${filterType === id ? 'bg-rose-500 text-white border-rose-500' : 'bg-white/5 text-zinc-300 border-white/10 hover:bg-white/10'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
+      </section>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pt-1 custom-scrollbar">
-          {[
-            { id: 'all', label: 'All Results' },
-            { id: 'songs', label: 'Songs' },
-            { id: 'artists', label: 'Artists' },
-            { id: 'playlists', label: 'Playlists' },
-            { id: 'lyrics', label: 'Lyrics Transliteration' },
-          ].map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFilterType(f.id as any)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
-                filterType === f.id
-                  ? 'bg-rose-500 text-white border-rose-500'
-                  : 'bg-white/5 text-zinc-300 border-white/10 hover:bg-white/10'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* When no query is typed: Show Recent Searches & Trending Tags */}
       {!searchQuery.trim() ? (
-        <div className="space-y-6">
-          {/* Recent Searches */}
+        <div className="space-y-7">
           {recentSearches.length > 0 && (
-            <div className="space-y-2.5">
+            <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                  <History size={14} />
-                  Recent Searches
-                </span>
-                <button
-                  onClick={handleClearRecent}
-                  className="text-xs text-zinc-400 hover:text-white transition-colors"
-                >
-                  Clear
-                </button>
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Recent searches</span>
+                <button onClick={clearRecent} className="text-xs text-zinc-500 hover:text-white">Clear</button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {recentSearches.map((term) => (
-                  <button
-                    key={term}
-                    onClick={() => handleSelectRecent(term)}
-                    className="px-3.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/10 border border-white/10 text-xs font-medium text-zinc-200 transition-all flex items-center gap-2"
-                  >
-                    <span>{term}</span>
+                  <button key={term} onClick={() => selectRecent(term)} className="px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-zinc-200">
+                    {term}
                   </button>
                 ))}
+              </div>
+            </section>
+          )}
+
+          <section className="space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+              <TrendingUp size={14} className="text-rose-400" /> Explore music
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {trendingTags.map((tag, index) => (
+                <button key={tag} onClick={() => selectRecent(tag)} className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 text-left transition-all group">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-rose-400">#{index + 1}</span>
+                    <Sparkles size={13} className="text-zinc-500 group-hover:text-rose-400" />
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-white truncate">{tag}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {searchError && (
+            <div className="flex items-start gap-3 p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 text-amber-200 text-xs">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">YouTube search unavailable</p>
+                <p className="mt-1 text-amber-200/70">{searchError}</p>
               </div>
             </div>
           )}
 
-          {/* Trending Indian & Global Tags */}
-          <div className="space-y-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-              <TrendingUp size={14} className="text-rose-400" />
-              Trending in India & Global
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {trendingTags.map((tag, idx) => (
-                <div
-                  key={tag}
-                  onClick={() => onSearchChange(tag)}
-                  className="p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 cursor-pointer transition-all flex items-center justify-between group"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xs font-mono font-bold text-rose-400">#{idx + 1}</span>
-                    <span className="text-xs font-semibold text-white group-hover:text-rose-300 transition-colors">
-                      {tag}
-                    </span>
-                  </div>
-                  <Sparkles size={13} className="text-zinc-400 group-hover:text-rose-400 transition-colors" />
-                </div>
-              ))}
+          {isSearching && searchResults.length === 0 && (
+            <div className="p-10 rounded-3xl border border-white/10 bg-white/[0.02] text-center">
+              <Loader2 size={28} className="mx-auto text-rose-400 animate-spin" />
+              <p className="mt-3 text-sm text-white font-semibold">Searching YouTube…</p>
+              <p className="mt-1 text-xs text-zinc-500">Finding playable results for “{searchQuery}”</p>
             </div>
-          </div>
-        </div>
-      ) : (
-        /* Results Section */
-        <div className="space-y-6">
-          {searchResults.songs.length === 0 && searchResults.playlists.length === 0 ? (
-            <div className="p-12 text-center rounded-3xl bg-white/[0.02] border border-white/10 space-y-3">
-              <Music size={40} className="mx-auto text-zinc-400 opacity-40" />
-              <h3 className="text-base font-bold text-white">No exact match for "{searchQuery}"</h3>
-              <p className="text-xs text-zinc-400 max-w-md mx-auto">
-                Try searching by artist name (e.g. Arijit, Pritam, Anirudh) or movie name (Brahmastra, Aashiqui 2).
-              </p>
+          )}
+
+          {!isSearching && !searchError && searchResults.length === 0 && (
+            <div className="p-12 text-center rounded-3xl bg-white/[0.02] border border-white/10">
+              <Music size={40} className="mx-auto text-zinc-500 opacity-40" />
+              <h3 className="mt-3 text-base font-bold text-white">No playable results</h3>
+              <p className="mt-1 text-xs text-zinc-500">Try the artist name, song title, or a broader search.</p>
             </div>
-          ) : (
-            <>
-              {/* Songs Results */}
-              {(filterType === 'all' || filterType === 'songs' || filterType === 'lyrics') &&
-                searchResults.songs.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Music size={16} className="text-rose-400" />
-                      Matching Songs ({searchResults.songs.length})
-                    </h3>
+          )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {searchResults.songs.map((song) => {
-                        const isCurrentPlaying = currentSong?.id === song.id && isPlaying;
-                        const isLiked = likedSongIds.has(song.id);
-                        const isDownloaded = downloadedSongIds.has(song.id);
+          {(filterType === 'all' || filterType === 'songs') && searchResults.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2"><Music size={16} className="text-rose-400" /> Songs</h3>
+                <span className="text-[10px] uppercase tracking-wider text-zinc-500">{searchResults.length} playable</span>
+              </div>
 
-                        return (
-                          <div
-                            key={song.id}
-                            className={`group flex items-center justify-between p-3 rounded-2xl transition-all border ${
-                              isCurrentPlaying
-                                ? 'bg-rose-500/15 border-rose-500/40'
-                                : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/10'
-                            }`}
-                          >
-                            <div
-                              className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                              onClick={() => onPlaySong(song)}
-                            >
-                              <img
-                                src={song.coverArt}
-                                alt={song.title}
-                                className="w-12 h-12 rounded-xl object-cover border border-white/15 shrink-0"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <h4 className="text-xs font-bold text-white group-hover:text-rose-300 truncate transition-colors">
-                                  {song.title}
-                                </h4>
-                                <p className="text-[11px] text-zinc-400 truncate">{song.artist}</p>
-                                <span className="text-[9px] uppercase font-semibold px-1 py-0.2 rounded-md bg-white/10 text-zinc-400">
-                                  {song.languageLabel}
-                                </span>
-                              </div>
-                            </div>
+              <div className="space-y-2">
+                {searchResults.map((song) => {
+                  const active = currentSong?.id === song.id && isPlaying;
+                  const liked = likedSongIds.has(song.id);
+                  const downloaded = downloadedSongIds.has(song.id);
+                  const externalUrl = song.youtubeVideoId ? `https://www.youtube.com/watch?v=${song.youtubeVideoId}` : undefined;
+                  return (
+                    <div key={song.id} className={`group flex items-center gap-3 p-3 rounded-2xl border transition-all ${active ? 'bg-rose-500/15 border-rose-500/40' : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.07]'}`}>
+                      <button onClick={() => playSong(song)} className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 group/play">
+                        <img src={song.coverArt} alt="" className="w-full h-full object-cover" />
+                        <span className="absolute inset-0 grid place-items-center bg-black/45 opacity-0 group-hover/play:opacity-100 transition-opacity">
+                          <Play size={18} fill="currentColor" className="text-white ml-0.5" />
+                        </span>
+                        {active && <span className="absolute inset-0 grid place-items-center bg-rose-500/50"><span className="w-2 h-5 rounded-full bg-white animate-pulse" /></span>}
+                      </button>
 
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={() => onToggleLike(song.id)}
-                                className={`p-1.5 rounded-lg transition-colors ${
-                                  isLiked ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-400 hover:text-white'
-                                }`}
-                              >
-                                <Heart size={14} fill={isLiked ? 'currentColor' : 'none'} />
-                              </button>
-                              <button
-                                onClick={() => onToggleDownload(song)}
-                                className={`p-1.5 rounded-lg transition-colors ${
-                                  isDownloaded ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-400 hover:text-white'
-                                }`}
-                              >
-                                {isDownloaded ? <Check size={14} /> : <Download size={14} />}
-                              </button>
-                              <button
-                                onClick={() => onAddToQueue(song)}
-                                className="p-1.5 rounded-lg text-zinc-400 hover:text-white"
-                              >
-                                <Plus size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-              {/* Playlists Results */}
-              {(filterType === 'all' || filterType === 'playlists') && searchResults.playlists.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <ListMusic size={16} className="text-purple-400" />
-                    Matching Playlists ({searchResults.playlists.length})
-                  </h3>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-                    {searchResults.playlists.map((pl) => (
-                      <div
-                        key={pl.id}
-                        onClick={() => onSelectPlaylist(pl)}
-                        className="group p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 cursor-pointer transition-all space-y-2"
-                      >
-                        <img
-                          src={pl.coverArt}
-                          alt={pl.title}
-                          className="w-full aspect-square rounded-xl object-cover border border-white/15"
-                        />
-                        <h4 className="text-xs font-bold text-white truncate group-hover:text-rose-300">
-                          {pl.title}
-                        </h4>
-                        <p className="text-[10px] text-zinc-400 truncate">{pl.songIds.length} Songs</p>
+                      <div className="min-w-0 flex-1 cursor-pointer" onClick={() => playSong(song)}>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-white truncate">{song.title}</h4>
+                          {song.youtubeVideoId && <span className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/20">YouTube</span>}
+                        </div>
+                        <p className="text-xs text-zinc-400 truncate mt-0.5">{song.artist}</p>
+                        <div className="flex items-center gap-2 mt-1 text-[9px] text-zinc-500">
+                          <span>{Math.floor(song.duration / 60)}:{String(Math.floor(song.duration % 60)).padStart(2, '0')}</span>
+                          <span>•</span>
+                          <span>{song.languageLabel}</span>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button onClick={() => onToggleLike(song.id)} className={`p-2 rounded-lg ${liked ? 'text-rose-400 bg-rose-500/10' : 'text-zinc-500 hover:text-white'}`} title="Like">
+                          <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
+                        </button>
+                        <button onClick={() => onAddToQueue(song)} className="p-2 rounded-lg text-zinc-500 hover:text-white" title="Add to queue"><Plus size={16} /></button>
+                        <button onClick={() => onToggleDownload(song)} className={`p-2 rounded-lg ${downloaded ? 'text-emerald-400' : 'text-zinc-500 hover:text-white'}`} title="Save locally">
+                          {downloaded ? <Check size={15} /> : <Download size={15} />}
+                        </button>
+                        {externalUrl && <a href={externalUrl} target="_blank" rel="noreferrer" className="p-2 rounded-lg text-zinc-500 hover:text-white" title="Open on YouTube"><ExternalLink size={15} /></a>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {(filterType === 'all' || filterType === 'artists') && artists.length > 0 && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-bold text-white">Artists / channels</h3>
+              <div className="flex flex-wrap gap-2">
+                {artists.slice(0, 12).map((artist) => <button key={artist} onClick={() => onSearchChange(artist)} className="px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-zinc-200 hover:bg-white/10">{artist}</button>)}
+              </div>
+            </section>
+          )}
+
+          {filterType !== 'songs' && (filterType === 'all' || filterType === 'playlists') && playlists.filter((playlist) => playlist.title.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><ListMusic size={16} className="text-purple-400" /> Your playlists</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {playlists.filter((playlist) => playlist.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 8).map((playlist) => (
+                  <button key={playlist.id} onClick={() => onSelectPlaylist(playlist)} className="p-3 rounded-2xl bg-white/[0.03] border border-white/10 hover:bg-white/[0.07] text-left">
+                    <img src={playlist.coverArt} alt="" className="w-full aspect-square rounded-xl object-cover" />
+                    <p className="mt-2 text-xs font-bold text-white truncate">{playlist.title}</p>
+                    <p className="text-[10px] text-zinc-500">{playlist.songIds.length} songs</p>
+                  </button>
+                ))}
+              </div>
+            </section>
           )}
         </div>
       )}
