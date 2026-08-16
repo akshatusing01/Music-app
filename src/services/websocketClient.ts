@@ -11,6 +11,7 @@ export class WebSocketClient {
   private currentParticipant: { id: string; name: string; avatar: string } | null = null;
   private currentRoomOptions: { roomName?: string; moodTheme?: string; initialSongId?: string; isPublic?: boolean } | undefined;
   private roomQueue: string[] = [];
+  private roomState: Partial<RoomState> | null = null;
   private isExplicitlyClosed = false;
   private latencyMs = 0;
   private pingInterval: number | null = null;
@@ -47,14 +48,34 @@ export class WebSocketClient {
             this.latencyMs = Math.max(8, Date.now() - data.timestamp);
             return;
           }
-          if (data.type === 'ROOM_SYNC_STATE' && data.payload?.queue) {
-            this.roomQueue = [...data.payload.queue];
+          if (data.type === 'ROOM_SYNC_STATE' && data.payload) {
+            this.roomState = data.payload;
+            this.roomQueue = [...(data.payload.queue || [])];
           }
           if (data.type === 'QUEUE_SYNC' && data.payload?.queue) {
             this.roomQueue = [...data.payload.queue];
+            this.roomState = { ...(this.roomState || {}), queue: this.roomQueue };
           }
           if (data.type === 'PLAYBACK_SYNC' && data.payload) {
             data.payload.songId = data.payload.songId || data.payload.currentSongId;
+            this.roomState = {
+              ...(this.roomState || {}),
+              currentSongId: data.payload.currentSongId || data.payload.songId || null,
+              isPlaying: data.payload.isPlaying,
+              playbackPosition: data.payload.playbackPosition ?? data.payload.position ?? 0,
+              playbackRate: data.payload.playbackRate ?? 1,
+              lastStateUpdate: data.payload.lastStateUpdate ?? Date.now(),
+            };
+          }
+          if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) {
+            this.roomState = { ...(this.roomState || {}), participants: data.payload.participants };
+          }
+          if (data.type === 'PARTICIPANT_LEFT' && data.payload?.participants) {
+            this.roomState = {
+              ...(this.roomState || {}),
+              participants: data.payload.participants,
+              hostId: data.payload.newHostId || this.roomState?.hostId,
+            };
           }
           this.listeners.forEach((listener) => listener(data));
         } catch (err) {
@@ -85,6 +106,7 @@ export class WebSocketClient {
     this.currentRoomId = null;
     this.currentRoomOptions = undefined;
     this.roomQueue = [];
+    this.roomState = null;
   }
 
   public addListener(listener: WebSocketEventListener) {
@@ -109,15 +131,56 @@ export class WebSocketClient {
   }
 
   public updateQueue(queue: string[]) {
-    this.roomQueue = [...queue];
+    this.roomQueue = [...new Set(queue)];
+    this.roomState = { ...(this.roomState || {}), queue: this.roomQueue };
     this.send('QUEUE_UPDATE', { queue: this.roomQueue });
   }
 
   public addSongToQueue(songId: string) {
-    if (!this.currentRoomId) return;
+    if (!this.currentRoomId || !songId) return;
     if (this.roomQueue.includes(songId)) return;
-    this.roomQueue = [...this.roomQueue, songId];
-    this.send('QUEUE_UPDATE', { queue: this.roomQueue });
+    this.updateQueue([...this.roomQueue, songId]);
+  }
+
+  public removeSongFromQueue(songId: string) {
+    this.updateQueue(this.roomQueue.filter((id) => id !== songId));
+  }
+
+  public clearQueue() {
+    this.updateQueue([]);
+  }
+
+  public getQueue(): string[] { return [...this.roomQueue]; }
+
+  public getRoomState(): Partial<RoomState> | null {
+    return this.roomState ? { ...this.roomState, queue: [...(this.roomState.queue || this.roomQueue)] } : null;
+  }
+
+  public getRoomId(): string | null { return this.currentRoomId; }
+
+  public getParticipantId(): string | null { return this.currentParticipant?.id || null; }
+
+  public isHost(): boolean {
+    const state = this.roomState;
+    return Boolean(state?.hostId && this.currentParticipant?.id && state.hostId === this.currentParticipant.id);
+  }
+
+  /** Advance the authoritative room to a queued track. Only the host should call this. */
+  public requestNextTrack() {
+    if (!this.currentRoomId || !this.isHost()) return false;
+    const current = this.roomState?.currentSongId || null;
+    const queue = this.roomQueue;
+    if (!queue.length) return false;
+    const index = current ? queue.indexOf(current) : -1;
+    const next = queue[(index + 1 + queue.length) % queue.length];
+    if (!next || next === current) return false;
+    this.broadcastPlayback('CHANGE_SONG', {
+      songId: next,
+      position: 0,
+      isPlaying: true,
+      senderName: this.currentParticipant?.name || 'Host',
+    });
+    return true;
   }
 
   public sendChatMessage(text: string, options?: { type?: 'text' | 'reaction' | 'sound'; reactionEmoji?: string; soundName?: string }) {
