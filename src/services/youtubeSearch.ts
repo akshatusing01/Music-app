@@ -35,7 +35,6 @@ function rememberRealTracks(songs: Song[]) {
   songs.forEach((song) => {
     if (!existing.has(song.id)) initialSongs.push(song);
   });
-
   try {
     const saved = JSON.parse(localStorage.getItem('syncbeat_imported_songs') || '[]') as Song[];
     const byId = new Map(saved.map((song) => [song.id, song]));
@@ -47,7 +46,6 @@ function rememberRealTracks(songs: Song[]) {
 export async function searchYouTubeMusic(query: string, maxResults = 15): Promise<YouTubeSearchResult> {
   const q = query.trim();
   if (!q) return { songs: [] };
-
   const key = getApiKey();
   const params = new URLSearchParams({
     part: 'snippet', q, type: 'video',
@@ -55,15 +53,13 @@ export async function searchYouTubeMusic(query: string, maxResults = 15): Promis
     videoEmbeddable: 'true', videoSyndicated: 'true', videoDuration: 'any',
     safeSearch: 'moderate', regionCode: 'IN', key,
   });
-
   const searchResponse = await fetch(`${API_BASE}/search?${params.toString()}`);
   if (!searchResponse.ok) {
     const error = await searchResponse.json().catch(() => ({}));
     throw new Error(error?.error?.message || `YouTube search failed (${searchResponse.status})`);
   }
-
   const searchData = await searchResponse.json();
-  const ids = (searchData.items || []).map((item: any) => item.id?.videoId).filter(Boolean);
+  const ids: string[] = (searchData.items || []).map((item: any) => item.id?.videoId).filter((id: unknown): id is string => typeof id === 'string');
   if (!ids.length) return { songs: [], nextPageToken: searchData.nextPageToken };
 
   const detailsParams = new URLSearchParams({ part: 'contentDetails,status,snippet', id: ids.join(','), key });
@@ -72,33 +68,30 @@ export async function searchYouTubeMusic(query: string, maxResults = 15): Promis
     const error = await detailsResponse.json().catch(() => ({}));
     throw new Error(error?.error?.message || `YouTube video metadata failed (${detailsResponse.status})`);
   }
-
   const detailsData = await detailsResponse.json();
-  const detailsById = new Map((detailsData.items || []).map((item: any) => [item.id, item]));
+  const detailsById = new Map<string, any>((detailsData.items || []).map((item: any) => [item.id, item]));
 
-  const songs: Song[] = ids
-    .map((id: string) => detailsById.get(id))
-    .filter((item: any) => item?.status?.embeddable !== false)
+  const songs: Song[] = ids.map((id) => detailsById.get(id))
+    .filter((item): item is any => Boolean(item) && item.status?.embeddable !== false && item.status?.privacyStatus !== 'private')
     .map((item: any) => {
       const title = item.snippet?.title || 'YouTube Track';
       const artist = item.snippet?.channelTitle || 'YouTube';
       const lang = inferLanguage(title);
-      const duration = parseDuration(item.contentDetails?.duration || 'PT0S');
-      const coverArt = item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
       return {
         id: `yt-search-${item.id}`,
         title,
         artist,
         album: 'YouTube',
-        duration: duration || 210,
-        coverArt,
+        duration: parseDuration(item.contentDetails?.duration || 'PT0S'),
+        coverArt: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
         language: lang.language,
         languageLabel: lang.label,
-        mood: ['vibe'],
-        genre: 'YouTube',
-        source: 'youtube',
-        sourceId: item.id,
-      } as Song;
+        mood: 'chill',
+        tags: ['youtube', 'search'],
+        youtubeVideoId: item.id,
+        lyrics: [],
+        sourceProvider: 'YouTube',
+      };
     });
 
   rememberRealTracks(songs);
