@@ -1,39 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  Users,
-  Radio,
-  Send,
-  Sparkles,
-  Copy,
-  Check,
-  Share2,
-  Volume2,
-  Crown,
-  Play,
-  Pause,
-  SkipForward,
-  Plus,
-  QrCode,
-  Flame,
-  Heart,
-  Music,
-  Smile,
-  Timer,
-  Clock,
-  Lock,
-  Globe,
-  Sliders,
-  ThumbsUp,
-  X,
-  MessageSquare,
-} from 'lucide-react';
-import { RoomState, Song, ChatMessage, FloatingReaction, SupportedLanguage, ExperienceMode } from '../../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { Users, Radio, Send, Sparkles, Copy, Check, QrCode, Crown, Play, Pause, SkipForward, Plus, Heart, Music, Smile, Lock, Globe, X, MessageSquare, Wifi, LogOut } from 'lucide-react';
+import { RoomState, Song, SupportedLanguage, ExperienceMode } from '../../types';
 import { translations } from '../../data/translations';
 import { wsClient } from '../../services/websocketClient';
-import { audioEngine } from '../../services/audioEngine';
-import confetti from 'canvas-confetti';
-import { GlassIcon } from '../GlassIcon';
-import { AudioVisualizer } from '../AudioVisualizer';
 
 interface SessionsViewProps {
   room: RoomState | null;
@@ -52,593 +21,164 @@ interface SessionsViewProps {
   latencyMs: number;
 }
 
-export const SessionsView: React.FC<SessionsViewProps> = ({
-  room,
-  currentSong,
-  isPlaying,
-  onTogglePlay,
-  onNextTrack,
-  onSelectSong,
-  availableSongs,
-  currentUser,
-  onCreateRoom,
-  onJoinRoom,
-  onLeaveRoom,
-  onOpenLyrics,
-  language,
-  latencyMs,
-}) => {
-  const [chatInput, setChatInput] = useState('');
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomMood, setNewRoomMood] = useState<ExperienceMode>('love');
-  const [isPrivateRoom, setIsPrivateRoom] = useState(false);
-  const [joinCodeInput, setJoinCodeInput] = useState('');
-  const [songVotes, setSongVotes] = useState<Record<string, number>>({});
-  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+const button = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-semibold text-zinc-200 transition hover:bg-white/10 active:scale-[.98]';
+
+export const SessionsView: React.FC<SessionsViewProps> = ({ room, currentSong, isPlaying, onTogglePlay, onNextTrack, onSelectSong, availableSongs, currentUser, onCreateRoom, onJoinRoom, onLeaveRoom, onOpenLyrics, language, latencyMs }) => {
   const t = translations[language] || translations.en;
+  const [roomName, setRoomName] = useState('');
+  const [mood, setMood] = useState<ExperienceMode>('love');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [chat, setChat] = useState('');
+  const [copied, setCopied] = useState(false);
+  const chatEnd = useRef<HTMLDivElement>(null);
+  const isHost = Boolean(room && room.hostId === currentUser.id);
 
-  const isHost = room ? room.hostId === currentUser.id : false;
+  useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [room?.chatMessages.length]);
 
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [room?.chatMessages]);
-
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || !room) return;
-    wsClient.sendChatMessage(chatInput.trim());
-    setChatInput('');
+  const create = (event: React.FormEvent) => {
+    event.preventDefault();
+    const clean = roomName.trim();
+    if (!clean) return;
+    onCreateRoom(clean, mood, isPrivate);
+    setRoomName('');
   };
 
-  const handleSendReaction = (emoji: string, soundEffect?: string) => {
+  const join = () => {
+    const value = joinCode.trim();
+    if (!value) return;
+    onJoinRoom(value);
+  };
+
+  const copyInvite = async () => {
     if (!room) return;
-    wsClient.burstReaction(emoji, soundEffect);
-    if (soundEffect) {
-      audioEngine.playReactionSound(soundEffect);
-    }
-    confetti({
-      particleCount: 20,
-      spread: 60,
-      origin: { y: 0.8 },
-    });
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}?room=${encodeURIComponent(room.roomId)}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {}
   };
 
-  const handleSendMoment = (emoji: string) => {
-    if (!room || !currentSong) return;
-    const timeFormatted = `${Math.floor(room.playbackPosition / 60)}:${Math.floor(room.playbackPosition % 60).toString().padStart(2, '0')}`;
-    wsClient.sendChatMessage(`${emoji} Moment at ${timeFormatted} • ${currentSong.title}`);
-    handleSendReaction(emoji);
+  const sendChat = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!chat.trim() || !room) return;
+    wsClient.sendChatMessage(chat.trim());
+    setChat('');
   };
 
-  const handleCopyInvite = () => {
-    if (!room) return;
-    const url = `${window.location.origin}?room=${room.roomId}`;
-    navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  const handleCreateNewRoom = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newRoomName.trim()) return;
-    onCreateRoom(newRoomName.trim(), newRoomMood, isPrivateRoom);
-    setNewRoomName('');
-  };
-
-  const activeHubRooms = [
-    {
-      id: 'room-delhi-lofi',
-      name: 'Delhi Monsoon Chai & Code ☕',
-      listeners: 18,
-      songTitle: 'Midnight Chai & Sitar Lofi',
-      host: 'Aarav (DJ)',
-      mood: 'study',
-      cover: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      id: 'room-couple-drive',
-      name: 'Midnight Highway & Bollywood Romance 💕',
-      listeners: 12,
-      songTitle: 'Tum Hi Ho • Aashiqui 2',
-      host: 'Rohan & Priya',
-      mood: 'love',
-      cover: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      id: 'room-beast-workout',
-      name: 'Heavy Deadlift 140+ BPM Gym Phonk ⚡',
-      listeners: 24,
-      songTitle: 'Zinda Phonk • Beast Anthem',
-      host: 'Vikram',
-      mood: 'gym',
-      cover: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      id: 'room-south-party',
-      name: 'Chennai Kuthu & Telugu Hits 🪩',
-      listeners: 31,
-      songTitle: 'Arabic Kuthu • Beast',
-      host: 'Karthik',
-      mood: 'friends',
-      cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
-    },
-  ];
-
-  // ----------------------------------------------------
-  // VIEW A: USER IS INSIDE AN ACTIVE SYNC ROOM
-  // ----------------------------------------------------
   if (room) {
     return (
-      <div className="space-y-6 pb-12 animate-in fade-in duration-300">
-        {/* Top Room Banner */}
-        <div className="relative rounded-3xl p-6 sm:p-8 bg-gradient-to-r from-rose-950/40 via-zinc-950/60 to-purple-950/40 border border-white/10 backdrop-blur-2xl">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="flex h-2.5 w-2.5 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
-                </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-rose-400">
-                  Real-Time Listening Room
-                </span>
-                <span className="text-xs font-mono text-zinc-400">#{room.roomId}</span>
+      <div className="space-y-5 pb-10">
+        <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-rose-950/40 via-zinc-950/80 to-purple-950/30 p-5 sm:p-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-rose-300">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-rose-400" /> LIVE SESSION
+                <span className="font-mono text-zinc-500">{room.roomId}</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">{room.roomName}</h1>
-              <p className="text-xs text-zinc-400 flex items-center gap-2">
-                <span>{room.participants.length} Active Listeners</span>
-                <span>•</span>
-                <span className="text-emerald-400 font-mono">Sync Latency: {latencyMs}ms</span>
-              </p>
+              <h1 className="truncate text-2xl font-black tracking-tight text-white sm:text-3xl">{room.roomName}</h1>
+              <p className="mt-1 text-xs text-zinc-400">{room.participants.length} listener{room.participants.length === 1 ? '' : 's'} · <span className="text-emerald-400">{latencyMs}ms sync</span></p>
             </div>
-
-            {/* Room Controls: Invite, QR, Leave */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={handleCopyInvite}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold text-white transition-all"
-              >
-                {copiedLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                <span>{copiedLink ? 'Link Copied!' : 'Invite Friends'}</span>
-              </button>
-
-              <button
-                onClick={() => setShowQrModal(true)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-zinc-300 hover:text-white transition-all"
-                title="Scan QR Code to join on Mobile"
-              >
-                <QrCode size={16} />
-              </button>
-
-              <button
-                onClick={onLeaveRoom}
-                className="px-3.5 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-xs font-semibold text-red-300 transition-all"
-              >
-                Leave Room
-              </button>
+            <div className="flex flex-wrap gap-2">
+              <button className={button} onClick={copyInvite}>{copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}{copied ? 'Copied' : 'Invite'}</button>
+              <button className={button} onClick={onLeaveRoom}><LogOut size={14} /> Leave</button>
             </div>
           </div>
 
-          {/* Active Synced Track Box */}
-          {currentSong && (
-            <div className="mt-6 p-4 rounded-2xl bg-black/40 border border-white/15 flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5 w-full md:w-auto">
-                <img
-                  src={currentSong.coverArt}
-                  alt={currentSong.title}
-                  className="w-16 h-16 rounded-xl object-cover border border-white/20 shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.2 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                      Now Synced
-                    </span>
-                    <span className="text-[10px] text-zinc-400">{currentSong.languageLabel}</span>
+          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              {currentSong ? (
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <img src={currentSong.coverArt} alt="" referrerPolicy="no-referrer" className="h-24 w-24 rounded-2xl object-cover ring-1 ring-white/10" />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-rose-300">Now playing together</span>
+                    <h2 className="mt-1 truncate text-lg font-bold text-white">{currentSong.title}</h2>
+                    <p className="truncate text-sm text-zinc-400">{currentSong.artist}</p>
+                    <button className="mt-3 text-xs font-semibold text-rose-300 hover:text-white" onClick={onOpenLyrics}>Open lyrics</button>
                   </div>
-                  <h3 className="text-sm font-bold text-white truncate">{currentSong.title}</h3>
-                  <p className="text-xs text-zinc-400 truncate">{currentSong.artist}</p>
+                  {isHost && <div className="flex shrink-0 items-center gap-2">
+                    <button onClick={onTogglePlay} className="grid h-11 w-11 place-items-center rounded-full bg-white text-black shadow-xl" aria-label={isPlaying ? 'Pause session' : 'Play session'}>{isPlaying ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button>
+                    <button onClick={onNextTrack} className={button} aria-label="Next track"><SkipForward size={17} /></button>
+                  </div>}
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center">
+                  <Music className="mx-auto mb-2 text-zinc-600" size={26} />
+                  <p className="text-sm font-semibold text-zinc-300">No track selected</p>
+                  <p className="mt-1 text-xs text-zinc-500">Search a real YouTube track, then start playback to sync it.</p>
+                </div>
+              )}
+            </div>
 
-              {/* Host Playback Controls */}
-              <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                {isHost && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={onTogglePlay}
-                      className="p-3 rounded-full bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/30 transition-all"
-                      title={isPlaying ? 'Pause for all' : 'Play for all'}
-                    >
-                      {isPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
-                    </button>
-                    <button
-                      onClick={onNextTrack}
-                      className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-200 transition-all"
-                      title="Next Track"
-                    >
-                      <SkipForward size={16} />
-                    </button>
-                  </div>
-                )}
-
-                <button
-                  onClick={onOpenLyrics}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold text-zinc-200 transition-all"
-                >
-                  <span>Live Lyrics</span>
-                </button>
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <div className="mb-3 flex items-center justify-between"><span className="text-xs font-bold text-white">Listeners</span><Wifi size={14} className="text-emerald-400" /></div>
+              <div className="space-y-2">
+                {room.participants.map((p) => <div key={p.id} className="flex items-center gap-2 rounded-xl bg-white/[.04] p-2">
+                  {p.avatar ? <img src={p.avatar} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-xs font-bold text-white">{p.name.slice(0, 1).toUpperCase()}</div>}
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">{p.name}</span>{p.isHost && <Crown size={13} className="text-amber-400" />}
+                </div>)}
               </div>
             </div>
-          )}
+          </div>
+        </section>
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <section className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
+            <div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-sm font-bold text-white"><Music size={16} className="text-rose-400" /> Room queue</h2><span className="text-[10px] text-zinc-500">Host controls playback</span></div>
+            {availableSongs.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-xs text-zinc-500">Search YouTube for real tracks to add them here.</div> : <div className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+              {availableSongs.slice(0, 30).map((song) => <button key={song.id} onClick={() => onSelectSong(song)} className="flex min-w-0 items-center gap-2 rounded-xl border border-white/5 bg-white/[.03] p-2 text-left hover:bg-white/[.07]">
+                <img src={song.coverArt} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-white">{song.title}</span><span className="block truncate text-[10px] text-zinc-500">{song.artist}</span></span><Plus size={14} className="shrink-0 text-zinc-500" />
+              </button>)}
+            </div>}
+          </section>
+
+          <section className="flex min-h-[430px] flex-col rounded-2xl border border-white/10 bg-white/[.025] p-4">
+            <div className="mb-3 flex items-center gap-2 border-b border-white/10 pb-3"><MessageSquare size={16} className="text-purple-300" /><span className="text-sm font-bold text-white">Live chat</span></div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              {(room.chatMessages || []).map((message) => <div key={message.id} className={`rounded-xl p-2 ${message.type === 'system' ? 'bg-white/[.03]' : 'bg-white/[.05]'}`}><div className="mb-0.5 flex items-center gap-2"><span className="text-[10px] font-semibold text-zinc-300">{message.senderName}</span><span className="text-[9px] text-zinc-600">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div><p className="break-words text-xs text-white">{message.text}</p></div>)}
+              <div ref={chatEnd} />
+            </div>
+            <form onSubmit={sendChat} className="relative mt-3"><input value={chat} onChange={(e) => setChat(e.target.value)} placeholder="Say something…" className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 pr-10 text-xs text-white outline-none focus:border-rose-500/50" /><button disabled={!chat.trim()} className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-lg bg-rose-500 text-white disabled:opacity-30"><Send size={13} /></button></form>
+          </section>
         </div>
-
-        {/* Room Grid: Left Collaborative Queue & Right Synchronized Chat */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Collaborative Queue (7 Cols) */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Music size={18} className="text-rose-400" />
-                <span>Collaborative Queue</span>
-              </h2>
-              <span className="text-xs text-zinc-400">Listeners can vote or request tracks</span>
-            </div>
-
-            {/* Song Request Picker */}
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-xl space-y-3">
-              <span className="text-xs font-bold text-zinc-300">Add Track to Room Queue</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                {availableSongs.map((s) => (
-                  <div
-                    key={s.id}
-                    onClick={() => {
-                      if (isHost) onSelectSong(s);
-                      else wsClient.sendChatMessage(`Requested track: ${s.title}`);
-                    }}
-                    className="flex items-center justify-between p-2 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-white/5 transition-all text-xs"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <img src={s.coverArt} alt={s.title} className="w-8 h-8 rounded-lg object-cover" />
-                      <div className="min-w-0">
-                        <p className="font-semibold text-white truncate">{s.title}</p>
-                        <p className="text-[10px] text-zinc-400 truncate">{s.artist}</p>
-                      </div>
-                    </div>
-                    <Plus size={14} className="text-zinc-400 hover:text-rose-400 shrink-0" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Synced Listeners Stack */}
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-zinc-300">
-                  Synced Participants ({room.participants.length})
-                </span>
-                <span className="text-[10px] text-emerald-400 font-mono">100% In-Sync</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {room.participants.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center gap-2.5 p-2 rounded-xl bg-white/5 border border-white/5"
-                  >
-                    <img
-                      src={p.avatar}
-                      alt={p.name}
-                      className="w-8 h-8 rounded-full object-cover border border-white/20 shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1">
-                        <p className="text-xs font-semibold text-white truncate">{p.name}</p>
-                        {p.isHost && <Crown size={11} className="text-amber-400 shrink-0" />}
-                      </div>
-                      <p className="text-[10px] text-zinc-400 truncate">Device Synced</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Synchronized Live Chat & Reactions (5 Cols) */}
-          <div className="lg:col-span-5 flex flex-col h-[520px] rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-xl p-4 space-y-3">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2">
-              <div className="flex items-center gap-2">
-                <MessageSquare size={16} className="text-rose-400" />
-                <span className="text-xs font-bold text-white">Live Room Chat</span>
-              </div>
-              <span className="text-[10px] text-zinc-400">Timestamp moments & reactions</span>
-            </div>
-
-            {/* Quick Moment Tagger */}
-            <div className="flex items-center justify-between gap-1.5 p-1.5 rounded-xl bg-white/5 border border-white/10">
-              {['❤️', '🔥', '✨', '😭', '🙌'].map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => handleSendMoment(emoji)}
-                  className="flex-1 py-1 text-sm rounded-lg hover:bg-white/15 transition-all text-center"
-                  title="Tag moment in song"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-
-            {/* Chat Messages Log */}
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar text-xs">
-              {room.chatMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className="p-2.5 rounded-xl bg-white/[0.04] border border-white/5 space-y-1"
-                >
-                  <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                    <span className="font-bold text-zinc-300">{msg.senderName}</span>
-                    <span className="font-mono">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  </div>
-                  <p className="text-xs text-white break-words">{msg.text}</p>
-                </div>
-              ))}
-              <div ref={chatBottomRef} />
-            </div>
-
-            {/* Send Chat Bar */}
-            <form onSubmit={handleSendChat} className="relative pt-1">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Send a vibe message or song reaction..."
-                className="w-full pl-3 pr-9 py-2 rounded-xl bg-white/5 border border-white/10 focus:border-rose-500/50 text-xs text-white placeholder-zinc-400 outline-none transition-all"
-              />
-              <button
-                type="submit"
-                disabled={!chatInput.trim()}
-                className="absolute right-1.5 top-2.5 p-1 rounded-lg bg-rose-500 text-white disabled:opacity-30 transition-opacity"
-              >
-                <Send size={13} />
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* QR Code Invite Modal */}
-        {showQrModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-            <div className="relative w-full max-w-sm rounded-3xl bg-zinc-950 border border-white/20 p-6 text-center space-y-4">
-              <button
-                onClick={() => setShowQrModal(false)}
-                className="absolute top-4 right-4 p-1.5 rounded-full bg-white/10 text-zinc-400 hover:text-white"
-              >
-                <X size={16} />
-              </button>
-              <div className="mx-auto w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30">
-                <QrCode size={24} />
-              </div>
-              <h3 className="text-base font-bold text-white">Join {room.roomName}</h3>
-              <p className="text-xs text-zinc-400">
-                Scan with any phone camera to instantly synchronize playback and reactions.
-              </p>
-              <div className="p-4 rounded-2xl bg-white flex items-center justify-center">
-                {/* Visual QR Simulation */}
-                <div className="w-44 h-44 bg-zinc-900 rounded-lg p-2 flex flex-col items-center justify-center text-white text-[11px] font-mono border-4 border-dashed border-rose-500">
-                  <Radio size={32} className="text-rose-400 mb-1 animate-pulse" />
-                  <span className="font-bold text-xs">SyncBeat Room</span>
-                  <span>Code: {room.roomId}</span>
-                  <span className="text-[9px] text-zinc-400 mt-1">Point camera to join</span>
-                </div>
-              </div>
-              <button
-                onClick={handleCopyInvite}
-                className="w-full py-2.5 rounded-xl bg-rose-500 text-white font-bold text-xs shadow-md"
-              >
-                {copiedLink ? 'Link Copied!' : 'Copy Session Link'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
-  // ----------------------------------------------------
-  // VIEW B: SESSIONS HUB & ROOM CREATOR / JOINER LOBBY
-  // ----------------------------------------------------
   return (
-    <div className="space-y-8 pb-12 animate-in fade-in duration-300">
-      {/* Hero Header */}
-      <div className="relative rounded-3xl p-6 sm:p-8 bg-gradient-to-r from-rose-950/40 via-zinc-950/60 to-purple-950/40 border border-white/10 backdrop-blur-2xl space-y-3">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold">
-          <Users size={14} />
-          <span>Real-Time Social Listening Hub</span>
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          Listen Together in Near-Instant Sync
-        </h1>
-        <p className="text-xs sm:text-sm text-zinc-300 max-w-xl leading-relaxed">
-          Create a private session for your partner, launch a gym beast room, or join thousands of listeners in live Indian Bollywood and Lofi rooms.
-        </p>
-      </div>
+    <div className="space-y-6 pb-12">
+      <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-rose-950/40 via-zinc-950/80 to-purple-950/30 p-6 sm:p-8">
+        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-rose-300"><Radio size={13} /> Listen together</div>
+        <h1 className="text-2xl font-black tracking-tight text-white sm:text-4xl">Create a real listening session.</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">Share a room code with someone you care about. Playback, seeking, queue changes, chat and focus controls are synchronized through the realtime session channel.</p>
+      </section>
 
-      {/* 2-Column: Create New Room (Left) & Join via Code (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Create Room Form */}
-        <div className="lg:col-span-7 p-6 rounded-3xl bg-white/[0.03] border border-white/10 backdrop-blur-xl space-y-5">
-          <div className="space-y-1">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Sparkles size={18} className="text-rose-400" />
-              <span>Create New Sync Room</span>
-            </h2>
-            <p className="text-xs text-zinc-400">Set up your shared listening space and invite friends</p>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <form onSubmit={create} className="rounded-3xl border border-white/10 bg-white/[.025] p-5 sm:p-6">
+          <div className="mb-5"><h2 className="flex items-center gap-2 text-base font-bold text-white"><Sparkles size={17} className="text-rose-400" /> Create session</h2><p className="mt-1 text-xs text-zinc-500">You'll become the host.</p></div>
+          <label className="mb-1.5 block text-xs font-semibold text-zinc-300">Session name</label>
+          <input value={roomName} onChange={(e) => setRoomName(e.target.value)} placeholder="Late night Bollywood 💕" className="mb-4 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none focus:border-rose-500/50" required />
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {([['love','Love & Couple 💕'],['focus','Study & Focus ☕'],['gym','Gym ⚡'],['friends','Friends 🪩']] as const).map(([id,label]) => <button type="button" key={id} onClick={() => setMood(id)} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${mood === id ? 'border-rose-500 bg-rose-500 text-white' : 'border-white/10 bg-white/[.03] text-zinc-400'}`}>{label}</button>)}
           </div>
+          <button type="button" onClick={() => setIsPrivate((v) => !v)} className="mb-4 flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[.03] p-3 text-left">
+            <span className="flex items-center gap-2">{isPrivate ? <Lock size={15} className="text-rose-400" /> : <Globe size={15} className="text-emerald-400" />}<span><span className="block text-xs font-semibold text-white">{isPrivate ? 'Private session' : 'Public session'}</span><span className="block text-[10px] text-zinc-500">{isPrivate ? 'Invite link/code only' : 'Anyone with the code can join'}</span></span></span>
+            <span className={`h-5 w-9 rounded-full p-0.5 ${isPrivate ? 'bg-rose-500' : 'bg-white/15'}`}><span className={`block h-4 w-4 rounded-full bg-white transition-transform ${isPrivate ? 'translate-x-4' : ''}`} /></span>
+          </button>
+          <button disabled={!roomName.trim()} className="w-full rounded-xl bg-rose-500 py-3 text-sm font-bold text-white shadow-lg shadow-rose-500/20 disabled:opacity-30">Launch session</button>
+        </form>
 
-          <form onSubmit={handleCreateNewRoom} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300">Room Name</label>
-              <input
-                type="text"
-                value={newRoomName}
-                onChange={(e) => setNewRoomName(e.target.value)}
-                placeholder="e.g. Late Night Bollywood Drive 💕, Chai & Study ☕"
-                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-rose-500/50 text-xs sm:text-sm text-white placeholder-zinc-400 outline-none transition-all"
-                required
-              />
-            </div>
-
-            {/* Atmosphere Mode Selector */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-300">Atmosphere Theme</label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[
-                  { id: 'love', label: 'Love & Couple 💕' },
-                  { id: 'focus', label: 'Study & Focus ☕' },
-                  { id: 'gym', label: 'Gym Beast ⚡' },
-                  { id: 'friends', label: 'Social Party 🪩' },
-                ].map((theme) => (
-                  <button
-                    type="button"
-                    key={theme.id}
-                    onClick={() => setNewRoomMood(theme.id as any)}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition-all text-center truncate ${
-                      newRoomMood === theme.id
-                        ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
-                        : 'bg-white/5 text-zinc-300 border-white/10 hover:bg-white/10'
-                    }`}
-                  >
-                    {theme.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Privacy Toggle */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
-              <div className="flex items-center gap-2.5">
-                {isPrivateRoom ? <Lock size={16} className="text-rose-400" /> : <Globe size={16} className="text-emerald-400" />}
-                <div>
-                  <p className="text-xs font-bold text-white">
-                    {isPrivateRoom ? 'Private Session (Invite Only)' : 'Public Room (Visible in Lobby)'}
-                  </p>
-                  <p className="text-[10px] text-zinc-400">
-                    {isPrivateRoom ? 'Only friends with link or PIN can join' : 'Anyone can discover and vibe with you'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsPrivateRoom(!isPrivateRoom)}
-                className={`w-11 h-6 rounded-full transition-colors relative ${
-                  isPrivateRoom ? 'bg-rose-500' : 'bg-white/20'
-                }`}
-              >
-                <span
-                  className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                    isPrivateRoom ? 'right-1' : 'left-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              disabled={!newRoomName.trim()}
-              className="w-full py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-bold text-sm shadow-lg shadow-rose-500/25 transition-all disabled:opacity-40"
-            >
-              Launch Room as DJ Host
-            </button>
-          </form>
-        </div>
-
-        {/* Join by Code Form */}
-        <div className="lg:col-span-5 p-6 rounded-3xl bg-white/[0.03] border border-white/10 backdrop-blur-xl space-y-5 flex flex-col justify-between">
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Radio size={18} className="text-purple-400" />
-                <span>Join with Session Code</span>
-              </h2>
-              <p className="text-xs text-zinc-400">Enter a 6-digit room PIN or paste an invitation link</p>
-            </div>
-
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={joinCodeInput}
-                onChange={(e) => setJoinCodeInput(e.target.value)}
-                placeholder="e.g. 748291 or room link"
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-purple-500/50 text-sm text-white placeholder-zinc-400 font-mono outline-none transition-all"
-              />
-              <button
-                onClick={() => {
-                  if (joinCodeInput.trim()) onJoinRoom(joinCodeInput.trim());
-                }}
-                disabled={!joinCodeInput.trim()}
-                className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-xs transition-all disabled:opacity-40"
-              >
-                Connect to Stream
-              </button>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/10 to-transparent border border-emerald-500/20 text-xs text-zinc-300 space-y-1.5">
-            <div className="flex items-center gap-2 text-emerald-400 font-bold">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Low-Latency Adaptive Sync</span>
-            </div>
-            <p className="text-[11px] text-zinc-400 leading-relaxed">
-              SyncBeat automatically calculates round-trip network ping to keep all devices tightly aligned within 20 milliseconds.
-            </p>
-          </div>
+        <div className="rounded-3xl border border-white/10 bg-white/[.025] p-5 sm:p-6">
+          <div className="mb-5"><h2 className="flex items-center gap-2 text-base font-bold text-white"><Users size={17} className="text-purple-300" /> Join session</h2><p className="mt-1 text-xs text-zinc-500">Paste a room code or the shared session URL.</p></div>
+          <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="room-abc123 or https://…?room=room-abc123" className="mb-3 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 font-mono text-xs text-white outline-none focus:border-purple-500/50" />
+          <button onClick={join} disabled={!joinCode.trim()} className="w-full rounded-xl border border-white/10 bg-white/10 py-3 text-sm font-bold text-white disabled:opacity-30">Join room</button>
+          <div className="mt-5 rounded-2xl border border-emerald-500/15 bg-emerald-500/[.04] p-4 text-xs text-zinc-400"><div className="mb-1 flex items-center gap-2 font-semibold text-emerald-300"><Wifi size={14} /> Realtime connection</div><p>SyncBeat reconnects automatically if the realtime connection drops.</p></div>
         </div>
       </div>
 
-      {/* Public Live Rooms Feed */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Active Public Listening Rooms</h2>
-            <p className="text-xs text-zinc-400">Drop in and vibe with listeners in real time</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {activeHubRooms.map((room) => (
-            <div
-              key={room.id}
-              onClick={() => onJoinRoom(room.id)}
-              className="group p-4 rounded-3xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 hover:border-rose-500/40 backdrop-blur-xl cursor-pointer transition-all space-y-3"
-            >
-              <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/15">
-                <img
-                  src={room.cover}
-                  alt={room.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute top-2 right-2 flex items-center gap-1 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[10px] font-mono text-emerald-400 border border-white/20">
-                  <Users size={11} />
-                  <span>{room.listeners} Live</span>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-xs font-bold text-white group-hover:text-rose-300 transition-colors truncate">
-                  {room.name}
-                </h4>
-                <p className="text-[11px] text-zinc-400 truncate">{room.songTitle}</p>
-                <p className="text-[10px] text-zinc-400 mt-1">Host: {room.host}</p>
-              </div>
-
-              <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs font-semibold text-rose-400">
-                <span>Join & Vibe</span>
-                <span>→</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <section className="rounded-2xl border border-dashed border-white/10 bg-white/[.02] p-8 text-center">
+        <Heart size={20} className="mx-auto mb-2 text-rose-400" /><h3 className="text-sm font-bold text-white">No fake rooms.</h3><p className="mt-1 text-xs text-zinc-500">Public rooms shown here will come only from real active sessions. Create one above to get started.</p>
+      </section>
     </div>
   );
 };
