@@ -29,7 +29,10 @@ function getYoutubeId(song: Song): string | null {
   if (OFFICIAL_VIDEO_IDS[song.id]) return OFFICIAL_VIDEO_IDS[song.id];
   // YouTube playlist imports created by youtubeService use yt-{videoId}-{index} IDs.
   const imported = song.id.match(/^yt-([A-Za-z0-9_-]{11})-\d+$/);
-  return imported?.[1] || null;
+  if (imported?.[1]) return imported[1];
+  // Live search results use yt-search-{videoId} IDs.
+  const searched = song.id.match(/^yt-search-([A-Za-z0-9_-]{11})$/);
+  return searched?.[1] || null;
 }
 
 function loadYouTubeAPI(): Promise<void> {
