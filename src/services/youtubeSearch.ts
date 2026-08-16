@@ -1,4 +1,7 @@
+/// <reference types="vite/client" />
+
 import type { Song, SupportedLanguage } from '../types';
+import { initialSongs } from '../data/songs';
 
 export interface YouTubeSearchResult {
   songs: Song[];
@@ -9,9 +12,7 @@ const API_BASE = 'https://www.googleapis.com/youtube/v3';
 
 function getApiKey(): string {
   const key = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined;
-  if (!key) {
-    throw new Error('YouTube search is not configured. Add VITE_YOUTUBE_API_KEY to the environment.');
-  }
+  if (!key) throw new Error('YouTube search is not configured. Add VITE_YOUTUBE_API_KEY to the environment.');
   return key;
 }
 
@@ -29,81 +30,70 @@ function inferLanguage(title: string): { language: SupportedLanguage | 'multi'; 
   return { language: 'en', label: 'English / International' };
 }
 
+function rememberRealTracks(songs: Song[]) {
+  const existing = new Set(initialSongs.map((song) => song.id));
+  songs.forEach((song) => {
+    if (!existing.has(song.id)) initialSongs.push(song);
+  });
+  try {
+    const saved = JSON.parse(localStorage.getItem('syncbeat_imported_songs') || '[]') as Song[];
+    const byId = new Map(saved.map((song) => [song.id, song]));
+    songs.forEach((song) => byId.set(song.id, song));
+    localStorage.setItem('syncbeat_imported_songs', JSON.stringify(Array.from(byId.values()).slice(-250)));
+  } catch {}
+}
+
 export async function searchYouTubeMusic(query: string, maxResults = 15): Promise<YouTubeSearchResult> {
   const q = query.trim();
   if (!q) return { songs: [] };
-
   const key = getApiKey();
   const params = new URLSearchParams({
-    part: 'snippet',
-    q,
-    type: 'video',
+    part: 'snippet', q, type: 'video',
     maxResults: String(Math.min(Math.max(maxResults, 1), 25)),
-    videoEmbeddable: 'true',
-    videoSyndicated: 'true',
-    videoDuration: 'any',
-    safeSearch: 'moderate',
-    regionCode: 'IN',
-    key,
+    videoEmbeddable: 'true', videoSyndicated: 'true', videoDuration: 'any',
+    safeSearch: 'moderate', regionCode: 'IN', key,
   });
-
   const searchResponse = await fetch(`${API_BASE}/search?${params.toString()}`);
   if (!searchResponse.ok) {
     const error = await searchResponse.json().catch(() => ({}));
     throw new Error(error?.error?.message || `YouTube search failed (${searchResponse.status})`);
   }
-
   const searchData = await searchResponse.json();
-  const ids = (searchData.items || [])
-    .map((item: any) => item.id?.videoId)
-    .filter(Boolean);
-
+  const ids: string[] = (searchData.items || []).map((item: any) => item.id?.videoId).filter((id: unknown): id is string => typeof id === 'string');
   if (!ids.length) return { songs: [], nextPageToken: searchData.nextPageToken };
 
-  const detailsParams = new URLSearchParams({
-    part: 'contentDetails,status,snippet',
-    id: ids.join(','),
-    key,
-  });
-
+  const detailsParams = new URLSearchParams({ part: 'contentDetails,status,snippet', id: ids.join(','), key });
   const detailsResponse = await fetch(`${API_BASE}/videos?${detailsParams.toString()}`);
   if (!detailsResponse.ok) {
     const error = await detailsResponse.json().catch(() => ({}));
     throw new Error(error?.error?.message || `YouTube video metadata failed (${detailsResponse.status})`);
   }
-
   const detailsData = await detailsResponse.json();
-  const detailsById = new Map((detailsData.items || []).map((item: any) => [item.id, item]));
+  const detailsById = new Map<string, any>((detailsData.items || []).map((item: any) => [item.id, item]));
 
-  const songs: Song[] = ids
-    .map((id: string) => detailsById.get(id))
-    .filter((item: any) => item?.status?.embeddable !== false)
+  const songs: Song[] = ids.map((id) => detailsById.get(id))
+    .filter((item): item is any => Boolean(item) && item.status?.embeddable !== false && item.status?.privacyStatus !== 'private')
     .map((item: any) => {
       const title = item.snippet?.title || 'YouTube Track';
       const artist = item.snippet?.channelTitle || 'YouTube';
       const lang = inferLanguage(title);
-      const duration = parseDuration(item.contentDetails?.duration || 'PT0S');
-      const coverArt =
-        item.snippet?.thumbnails?.high?.url ||
-        item.snippet?.thumbnails?.medium?.url ||
-        `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
-
       return {
         id: `yt-search-${item.id}`,
         title,
         artist,
         album: 'YouTube',
-        duration: duration || 210,
-        coverArt,
+        duration: parseDuration(item.contentDetails?.duration || 'PT0S'),
+        coverArt: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
         language: lang.language,
         languageLabel: lang.label,
         mood: 'chill',
-        tags: ['YouTube', 'Online', 'Search Result'],
+        tags: ['youtube', 'search'],
         youtubeVideoId: item.id,
         lyrics: [],
         sourceProvider: 'YouTube',
-      } satisfies Song;
+      };
     });
 
+  rememberRealTracks(songs);
   return { songs, nextPageToken: searchData.nextPageToken };
 }

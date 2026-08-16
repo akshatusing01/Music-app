@@ -129,9 +129,6 @@ export class WebSocketClient {
     senderName?: string;
   }) {
     if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) {
-      // Put a manually selected/search result at the front of the shared queue.
-      // This makes a searched YouTube track a first-class room track and gives
-      // the host a deterministic next item when it finishes.
       const nextQueue = [params.songId, ...this.roomQueue.filter((id) => id !== params.songId)];
       this.updateQueue(nextQueue);
     }
@@ -173,7 +170,6 @@ export class WebSocketClient {
     return Boolean(state?.hostId && this.currentParticipant?.id && state.hostId === this.currentParticipant.id);
   }
 
-  /** Advance the authoritative room to a queued track. Only the host should call this. */
   public requestNextTrack() {
     if (!this.currentRoomId || !this.isHost()) return false;
     const current = this.roomState?.currentSongId || null;
@@ -217,7 +213,7 @@ export class WebSocketClient {
 
   public createRoom(roomName: string, hostName: string, moodTheme = 'love', isPrivate = false) {
     const roomId = 'room-' + Math.random().toString(36).substring(2, 8);
-    const participant = { id: this.currentParticipant?.id || 'host-' + Math.random().toString(36).substring(2, 6), name: hostName, avatar: this.currentParticipant?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80' };
+    const participant = { id: this.currentParticipant?.id || 'host-' + Math.random().toString(36).substring(2, 6), name: hostName, avatar: this.currentParticipant?.avatar || '', };
     this.connect(roomId, participant, { roomName, moodTheme, isPublic: !isPrivate });
   }
 

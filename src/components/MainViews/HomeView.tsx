@@ -1,29 +1,6 @@
-import React, { useState } from 'react';
-import {
-  Play,
-  Pause,
-  Plus,
-  Heart,
-  Flame,
-  Sparkles,
-  Users,
-  Music,
-  Radio,
-  Download,
-  Check,
-  ArrowRight,
-  TrendingUp,
-  Clock,
-  Dumbbell,
-  Coffee,
-  Moon,
-  Globe,
-  Shuffle,
-  Volume2,
-  MoreVertical,
-} from 'lucide-react';
-import { Song, Playlist, MoodCategory, SupportedLanguage, ExperienceMode, RoomState } from '../../types';
-import { translations } from '../../data/translations';
+import React, { useMemo, useState } from 'react';
+import { Play, Plus, Heart, Search, Sparkles, Music2, Users, ArrowRight } from 'lucide-react';
+import { Song, Playlist, SupportedLanguage, ExperienceMode } from '../../types';
 
 interface HomeViewProps {
   songs: Song[];
@@ -52,323 +29,112 @@ export const HomeView: React.FC<HomeViewProps> = ({
   currentSong,
   isPlaying,
   onPlaySong,
-  onTogglePlay,
   onAddToQueue,
   likedSongIds,
   onToggleLike,
-  downloadedSongIds,
-  onToggleDownload,
-  onJoinRoom,
   onOpenAiGenerator,
   onSelectPlaylist,
-  onSelectExperience,
   onNavigateTab,
-  language,
-  experienceMode = 'love',
 }) => {
-  const [selectedFilter, setSelectedFilter] = useState<string>('all');
-  const t = translations[language] || translations.en;
+  const [selectedFilter, setSelectedFilter] = useState('all');
+  const moodChips = ['all', 'relax', 'workout', 'energize', 'focus', 'party', 'romance', 'bollywood', 'punjabi', 'lofi'];
 
-  const moodChips = [
-    { id: 'all', label: 'All' },
-    { id: 'relax', label: 'Relax' },
-    { id: 'workout', label: 'Workout' },
-    { id: 'energize', label: 'Energize' },
-    { id: 'focus', label: 'Focus' },
-    { id: 'commute', label: 'Commute' },
-    { id: 'party', label: 'Party' },
-    { id: 'romance', label: 'Romance' },
-    { id: 'bollywood', label: 'Bollywood' },
-    { id: 'punjabi', label: 'Punjabi' },
-    { id: 'lofi', label: 'Lofi & Chai' },
-  ];
-
-  const filteredSongs = songs.filter((s) => {
+  const filteredSongs = useMemo(() => songs.filter((song) => {
     if (selectedFilter === 'all') return true;
-    if (selectedFilter === 'relax') return s.mood === 'chill' || s.mood === 'study';
-    if (selectedFilter === 'workout') return s.mood === 'gym' || (s.bpm && s.bpm > 125);
-    if (selectedFilter === 'energize') return s.mood === 'party' || (s.bpm && s.bpm > 120);
-    if (selectedFilter === 'focus') return s.mood === 'study';
-    if (selectedFilter === 'party') return s.mood === 'party';
-    if (selectedFilter === 'romance') return s.mood === 'romance';
-    if (selectedFilter === 'bollywood') return s.language === 'hi';
-    if (selectedFilter === 'punjabi') return s.language === 'pa';
-    if (selectedFilter === 'lofi') return s.title.toLowerCase().includes('lofi') || s.title.toLowerCase().includes('raga');
+    if (selectedFilter === 'relax') return song.mood === 'chill' || song.mood === 'study';
+    if (selectedFilter === 'workout') return song.mood === 'gym' || (song.bpm ?? 0) > 125;
+    if (selectedFilter === 'energize') return song.mood === 'party' || (song.bpm ?? 0) > 120;
+    if (selectedFilter === 'focus') return song.mood === 'study';
+    if (selectedFilter === 'party') return song.mood === 'party';
+    if (selectedFilter === 'romance') return song.mood === 'romance';
+    if (selectedFilter === 'bollywood') return song.language === 'hi';
+    if (selectedFilter === 'punjabi') return song.language === 'pa';
+    if (selectedFilter === 'lofi') return /lofi|raga/i.test(song.title);
     return true;
-  });
-
-  const activeLiveRooms = [
-    {
-      id: 'room-delhi-lofi',
-      name: 'Delhi Monsoon Chai & Code ☕',
-      listeners: 18,
-      songTitle: 'Midnight Chai & Sitar Lofi',
-      host: 'Aarav (DJ)',
-      mood: 'Study / Focus',
-      cover: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      id: 'room-couple-drive',
-      name: 'Midnight Highway & Romance 💕',
-      listeners: 12,
-      songTitle: 'Kesariya • Brahmastra',
-      host: 'Rohan & Priya',
-      mood: 'Romance',
-      cover: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      id: 'room-beast-workout',
-      name: 'Heavy Deadlift 140+ BPM Beast ⚡',
-      listeners: 24,
-      songTitle: 'Zinda Phonk • Beast Anthem',
-      host: 'Vikram',
-      mood: 'Gym',
-      cover: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=600&auto=format&fit=crop&q=80',
-    },
-  ];
+  }), [songs, selectedFilter]);
 
   return (
     <div className="space-y-8 pb-16 animate-in fade-in duration-200">
-      {/* 1. YOUTUBE MUSIC FILTER CHIPS CAROUSEL */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar sticky top-16 z-30 bg-[#030303]/90 backdrop-blur-md py-2 -mx-4 px-4 sm:-mx-6 sm:px-6">
-        {moodChips.map((chip) => {
-          const isActive = selectedFilter === chip.id;
-          return (
-            <button
-              key={chip.id}
-              onClick={() => setSelectedFilter(chip.id)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                isActive
-                  ? 'bg-white text-black font-bold'
-                  : 'bg-white/10 text-white hover:bg-white/15'
-              }`}
-            >
-              {chip.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* 2. QUICK PICKS (YouTube Music 4-row Grid) */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">START RADIO FROM A SONG</p>
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Quick picks</h2>
+      <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
+        <div className="max-w-3xl">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 font-bold">Your music space</p>
+          <h1 className="mt-2 text-3xl sm:text-5xl font-black tracking-tight text-white">Find something worth listening to.</h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">Search YouTube for real, playable music, build your library, or start a listening room with people you care about.</p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button onClick={() => onNavigateTab('search')} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-black hover:bg-zinc-200"><Search size={16} /> Search music</button>
+            <button onClick={onOpenAiGenerator} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/[0.09]"><Sparkles size={16} /> Create an AI mix</button>
           </div>
-          <button
-            onClick={() => {
-              if (songs[0]) onPlaySong(songs[0]);
-            }}
-            className="px-3.5 py-1.5 rounded-full border border-white/20 text-xs font-semibold text-white hover:bg-white/10 transition-colors flex items-center gap-1.5"
-          >
-            <Play size={12} fill="currentColor" />
-            <span>Play all</span>
-          </button>
         </div>
+      </section>
 
-        {/* Quick Picks 4-Row Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-          {filteredSongs.slice(0, 16).map((song) => {
-            const isCurrentPlaying = currentSong?.id === song.id && isPlaying;
-            const isLiked = likedSongIds.has(song.id);
+      {songs.length > 0 ? (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+            {moodChips.map((chip) => (
+              <button key={chip} onClick={() => setSelectedFilter(chip)} className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition ${selectedFilter === chip ? 'bg-white text-black border-white' : 'bg-white/[0.04] text-zinc-300 border-white/10 hover:bg-white/[0.08]'}`}>
+                {chip === 'all' ? 'All' : chip.charAt(0).toUpperCase() + chip.slice(1)}
+              </button>
+            ))}
+          </div>
 
-            return (
-              <div
-                key={song.id}
-                className="group flex items-center justify-between p-2 rounded-lg hover:bg-white/[0.07] transition-colors cursor-pointer"
-                onClick={() => onPlaySong(song)}
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="relative w-12 h-12 rounded-md overflow-hidden shrink-0 border border-white/10">
-                    <img
-                      src={song.coverArt}
-                      alt={song.title}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      {isCurrentPlaying ? (
-                        <Pause size={18} className="text-white" />
-                      ) : (
-                        <Play size={18} className="text-white" fill="white" />
-                      )}
-                    </div>
-                  </div>
+          <div className="flex items-end justify-between">
+            <div><p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-bold">Your collection</p><h2 className="mt-1 text-2xl font-bold text-white">Recently added</h2></div>
+            <button onClick={() => onNavigateTab('library')} className="text-xs text-zinc-400 hover:text-white inline-flex items-center gap-1">Library <ArrowRight size={13} /></button>
+          </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+            {filteredSongs.slice(0, 16).map((song) => {
+              const active = currentSong?.id === song.id && isPlaying;
+              const liked = likedSongIds.has(song.id);
+              return (
+                <div key={song.id} className="group flex items-center gap-3 rounded-xl p-2 hover:bg-white/[0.06] transition">
+                  <button onClick={() => onPlaySong(song)} className="relative w-12 h-12 shrink-0 overflow-hidden rounded-lg bg-zinc-900 border border-white/10">
+                    {song.coverArt ? <img src={song.coverArt} alt="" className="h-full w-full object-cover" /> : <Music2 className="m-auto h-full p-3 text-zinc-600" />}
+                    <span className="absolute inset-0 hidden place-items-center bg-black/50 group-hover:grid"><Play size={17} fill="white" /></span>
+                  </button>
                   <div className="min-w-0 flex-1">
-                    <h4
-                      className={`text-xs font-semibold truncate ${
-                        isCurrentPlaying ? 'text-[#ff0000]' : 'text-white'
-                      }`}
-                    >
-                      {song.title}
-                    </h4>
-                    <p className="text-[11px] text-zinc-400 truncate">{song.artist}</p>
+                    <button onClick={() => onPlaySong(song)} className={`block max-w-full truncate text-left text-xs font-semibold ${active ? 'text-violet-300' : 'text-white'}`}>{song.title}</button>
+                    <p className="truncate text-[11px] text-zinc-500">{song.artist}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                    <button onClick={() => onToggleLike(song.id)} className={`p-1.5 ${liked ? 'text-rose-400' : 'text-zinc-500 hover:text-white'}`} aria-label="Like"><Heart size={14} fill={liked ? 'currentColor' : 'none'} /></button>
+                    <button onClick={() => onAddToQueue(song)} className="p-1.5 text-zinc-500 hover:text-white" aria-label="Add to queue"><Plus size={15} /></button>
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-10 text-center">
+          <Music2 className="mx-auto h-10 w-10 text-zinc-600" />
+          <h2 className="mt-4 text-lg font-bold text-white">Your music starts here.</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500">There are no demo songs or generated covers in this build. Search YouTube for a real track and play it instantly.</p>
+          <button onClick={() => onNavigateTab('search')} className="mt-5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-black">Search real music</button>
+        </section>
+      )}
 
-                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleLike(song.id);
-                    }}
-                    className={`p-1.5 rounded-full hover:bg-white/10 transition-colors ${
-                      isLiked ? 'text-[#ff0000]' : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <Heart size={14} fill={isLiked ? 'currentColor' : 'none'} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddToQueue(song);
-                    }}
-                    className="p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10"
-                    title="Add to queue"
-                  >
-                    <Plus size={15} />
-                  </button>
+      {playlists.length > 0 && (
+        <section className="space-y-4">
+          <div><p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-bold">Your playlists</p><h2 className="mt-1 text-2xl font-bold text-white">Saved collections</h2></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+            {playlists.map((playlist) => (
+              <button key={playlist.id} onClick={() => onSelectPlaylist(playlist)} className="group text-left">
+                <div className="aspect-square overflow-hidden rounded-2xl border border-white/10 bg-zinc-900">
+                  {playlist.coverArt ? <img src={playlist.coverArt} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <Music2 className="m-auto h-full w-full p-12 text-zinc-700" />}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 3. SIMILAR TO / LISTEN AGAIN SHELF (YouTube Music Horizontal Shelf) */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">SIMILAR TO YOUR FAVORITES</p>
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Recommended playlists</h2>
+                <p className="mt-2 truncate text-xs font-semibold text-white">{playlist.title}</p>
+                <p className="text-[11px] text-zinc-500">{playlist.songIds.length} tracks</p>
+              </button>
+            ))}
           </div>
-          <button
-            onClick={() => onNavigateTab('library')}
-            className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
-          >
-            More
-          </button>
-        </div>
+        </section>
+      )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {playlists.map((pl) => (
-            <div
-              key={pl.id}
-              onClick={() => onSelectPlaylist(pl)}
-              className="group cursor-pointer space-y-2.5"
-            >
-              <div className="relative aspect-square rounded-lg overflow-hidden border border-white/10 bg-zinc-900 shadow-md">
-                <img
-                  src={pl.coverArt}
-                  alt={pl.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                />
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <button className="absolute bottom-2.5 right-2.5 w-10 h-10 rounded-full bg-black/80 hover:bg-black text-white flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all">
-                  <Play size={16} fill="white" className="translate-x-0.5" />
-                </button>
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-white truncate group-hover:underline">
-                  {pl.title}
-                </h4>
-                <p className="text-[11px] text-zinc-400 truncate">
-                  Playlist • {pl.songIds.length} tracks
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 4. LIVE SOCIAL LISTEN ALONG ROOMS (YouTube Music Community Shelf) */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#ff0000] animate-pulse" />
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-red-400">LISTEN TOGETHER</p>
-              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Live sync rooms</h2>
-            </div>
-          </div>
-          <button
-            onClick={() => onNavigateTab('sessions')}
-            className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
-          >
-            See all
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          {activeLiveRooms.map((room) => (
-            <div
-              key={room.id}
-              onClick={() => onJoinRoom(room.id)}
-              className="group p-3.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] cursor-pointer transition-all flex items-center gap-3.5"
-            >
-              <img
-                src={room.cover}
-                alt={room.name}
-                className="w-16 h-16 rounded-lg object-cover border border-white/10 shrink-0 group-hover:scale-105 transition-transform"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="px-1.5 py-0.5 rounded-md bg-[#ff0000]/20 text-red-400 text-[10px] font-bold">
-                    {room.listeners} Live
-                  </span>
-                  <span className="text-[10px] text-zinc-400">{room.mood}</span>
-                </div>
-                <h4 className="text-xs font-semibold text-white truncate group-hover:text-red-400 transition-colors">
-                  {room.name}
-                </h4>
-                <p className="text-[11px] text-zinc-400 truncate">{room.songTitle}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 5. GEMINI AI MIXES & ATMOSPHERES */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">MIXED FOR YOU</p>
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Atmospheres & Focus</h2>
-          </div>
-          <button
-            onClick={onOpenAiGenerator}
-            className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
-          >
-            <Sparkles size={12} />
-            <span>Generate Custom Mix</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-          {[
-            { id: 'love', title: 'Romance & Ballads', sub: 'Arijit, Ed Sheeran, Prateek', color: 'from-rose-900/60 to-black' },
-            { id: 'focus', title: 'Focus & 432Hz Binaural', sub: 'Monsoon Sitar Lofi & Beats', color: 'from-emerald-900/60 to-black' },
-            { id: 'gym', title: 'Workout & Trap Phonk', sub: '135+ BPM High Intensity', color: 'from-amber-900/60 to-black' },
-            { id: 'chill', title: 'Late Night Chill', sub: 'Ambient Ragas & Deep Calm', color: 'from-purple-900/60 to-black' },
-          ].map((mix) => (
-            <div
-              key={mix.id}
-              onClick={() => {
-                onSelectExperience?.(mix.id as ExperienceMode);
-                if (mix.id === 'focus') onNavigateTab('focus');
-              }}
-              className={`p-4 rounded-xl bg-gradient-to-br ${mix.color} border border-white/10 hover:border-white/20 cursor-pointer transition-all group`}
-            >
-              <h4 className="text-xs sm:text-sm font-bold text-white group-hover:text-red-300 transition-colors">{mix.title}</h4>
-              <p className="text-[11px] text-zinc-400 mt-1 line-clamp-1">{mix.sub}</p>
-              <div className="mt-4 flex items-center justify-between text-[11px] text-zinc-300">
-                <span>Play Station</span>
-                <Play size={12} fill="white" className="group-hover:translate-x-0.5 transition-transform" />
-              </div>
-            </div>
-          ))}
-        </div>
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button onClick={() => onNavigateTab('sessions')} className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 text-left hover:bg-white/[0.05]"><Users className="text-violet-300" size={20} /><h3 className="mt-3 text-sm font-bold text-white">Listen together</h3><p className="mt-1 text-xs text-zinc-500">Create or join a live synchronized room.</p></button>
+        <button onClick={() => onNavigateTab('focus')} className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 text-left hover:bg-white/[0.05]"><Music2 className="text-emerald-300" size={20} /><h3 className="mt-3 text-sm font-bold text-white">Focus mode</h3><p className="mt-1 text-xs text-zinc-500">Pair real music with a focused session.</p></button>
+        <button onClick={onOpenAiGenerator} className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 text-left hover:bg-white/[0.05]"><Sparkles className="text-rose-300" size={20} /><h3 className="mt-3 text-sm font-bold text-white">Generate a mix</h3><p className="mt-1 text-xs text-zinc-500">Describe a mood and build a playlist from available music.</p></button>
       </section>
     </div>
   );
