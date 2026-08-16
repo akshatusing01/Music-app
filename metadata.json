@@ -1,0 +1,6 @@
+{
+  "name": "SyncBeat - Social Listening & Focus Platform",
+  "description": "Premium real-time social listening, synchronized listening rooms, live reactions, study/focus timer, ambient soundscapes, multi-language Indian discovery, and cross-device music experience.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
