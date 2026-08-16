@@ -128,6 +128,13 @@ export class WebSocketClient {
     playbackRate?: number;
     senderName?: string;
   }) {
+    if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) {
+      // Put a manually selected/search result at the front of the shared queue.
+      // This makes a searched YouTube track a first-class room track and gives
+      // the host a deterministic next item when it finishes.
+      const nextQueue = [params.songId, ...this.roomQueue.filter((id) => id !== params.songId)];
+      this.updateQueue(nextQueue);
+    }
     this.send('PLAYBACK_ACTION', { action, ...params });
   }
 
