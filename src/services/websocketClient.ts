@@ -15,6 +15,7 @@ export class WebSocketClient {
   private isExplicitlyClosed = false;
   private latencyMs = 0;
   private pingInterval: number | null = null;
+  private reconnectAttempts = 0;
 
   private constructor() {}
 
@@ -28,212 +29,114 @@ export class WebSocketClient {
     this.currentParticipant = participant;
     this.currentRoomOptions = options;
     this.isExplicitlyClosed = false;
-
     if (this.ws) { try { this.ws.close(); } catch {} }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const configured = String(import.meta.env.VITE_SYNC_WS_URL || '').trim();
+    const wsUrl = configured || `${protocol}//${window.location.host}${import.meta.env.PROD ? '/api/ws' : '/ws'}`;
 
     try {
       this.ws = new WebSocket(wsUrl);
       this.ws.onopen = () => {
+        this.reconnectAttempts = 0;
         this.send('JOIN_ROOM', { roomId, payload: { participant, ...options } });
         this.startPing();
+        this.emitStatus('SESSION_CONNECTED');
       };
-
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'PONG') {
-            this.latencyMs = Math.max(8, Date.now() - data.timestamp);
-            return;
-          }
-          if (data.type === 'ROOM_SYNC_STATE' && data.payload) {
-            this.roomState = data.payload;
-            this.roomQueue = [...(data.payload.queue || [])];
-          }
-          if (data.type === 'QUEUE_SYNC' && data.payload?.queue) {
-            this.roomQueue = [...data.payload.queue];
-            this.roomState = { ...(this.roomState || {}), queue: this.roomQueue };
-          }
+          if (data.type === 'PONG') { this.latencyMs = Math.max(1, Date.now() - data.payload?.timestamp); return; }
+          if (data.type === 'ROOM_SYNC_STATE' && data.payload) { this.roomState = data.payload; this.roomQueue = [...(data.payload.queue || [])]; }
+          if (data.type === 'QUEUE_SYNC' && data.payload?.queue) { this.roomQueue = [...data.payload.queue]; this.roomState = { ...(this.roomState || {}), queue: this.roomQueue }; }
           if (data.type === 'PLAYBACK_SYNC' && data.payload) {
             data.payload.songId = data.payload.songId || data.payload.currentSongId;
             data.payload.position = data.payload.position ?? data.payload.playbackPosition ?? 0;
-            this.roomState = {
-              ...(this.roomState || {}),
-              currentSongId: data.payload.currentSongId || data.payload.songId || null,
-              isPlaying: data.payload.isPlaying,
-              playbackPosition: data.payload.playbackPosition ?? data.payload.position ?? 0,
-              playbackRate: data.payload.playbackRate ?? 1,
-              lastStateUpdate: data.payload.lastStateUpdate ?? Date.now(),
-            };
+            this.roomState = { ...(this.roomState || {}), currentSongId: data.payload.currentSongId || data.payload.songId || null, isPlaying: data.payload.isPlaying, playbackPosition: data.payload.playbackPosition ?? data.payload.position ?? 0, playbackRate: data.payload.playbackRate ?? 1, lastStateUpdate: data.payload.lastStateUpdate ?? Date.now() };
           }
-          if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) {
-            this.roomState = { ...(this.roomState || {}), participants: data.payload.participants };
-          }
-          if (data.type === 'PARTICIPANT_LEFT' && data.payload?.participants) {
-            this.roomState = {
-              ...(this.roomState || {}),
-              participants: data.payload.participants,
-              hostId: data.payload.newHostId || this.roomState?.hostId,
-            };
-          }
+          if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants };
+          if (data.type === 'PARTICIPANT_LEFT' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, hostId: data.payload.newHostId || this.roomState?.hostId };
           this.listeners.forEach((listener) => listener(data));
-        } catch (err) {
-          console.error('Error handling WebSocket message:', err);
-        }
+        } catch (err) { console.error('Error handling WebSocket message:', err); }
       };
-
       this.ws.onclose = () => {
         this.stopPing();
         if (!this.isExplicitlyClosed) {
+          const delay = Math.min(1500 * Math.pow(1.5, this.reconnectAttempts), 15000);
+          this.reconnectAttempts += 1;
           if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
           this.reconnectTimeout = window.setTimeout(() => {
             if (this.currentRoomId && this.currentParticipant) this.connect(this.currentRoomId, this.currentParticipant, this.currentRoomOptions);
-          }, 1500);
+          }, delay);
+          this.emitStatus('SESSION_RECONNECTING');
         }
       };
-      this.ws.onerror = (err) => console.warn('WebSocket connection notice:', err);
-    } catch (err) {
-      console.error('Failed to initialize WebSocket:', err);
-    }
+      this.ws.onerror = () => this.emitStatus('SESSION_ERROR');
+    } catch { this.emitStatus('SESSION_ERROR'); }
   }
+
+  private emitStatus(type: string) { this.listeners.forEach((listener) => listener({ type, payload: { roomId: this.currentRoomId } })); }
 
   public disconnect() {
     this.isExplicitlyClosed = true;
     this.stopPing();
     if (this.reconnectTimeout) { clearTimeout(this.reconnectTimeout); this.reconnectTimeout = null; }
     if (this.ws) { try { this.ws.close(); } catch {} this.ws = null; }
-    this.currentRoomId = null;
-    this.currentRoomOptions = undefined;
-    this.roomQueue = [];
-    this.roomState = null;
+    this.currentRoomId = null; this.currentRoomOptions = undefined; this.roomQueue = []; this.roomState = null; this.reconnectAttempts = 0;
   }
 
-  public addListener(listener: WebSocketEventListener) {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
+  public addListener(listener: WebSocketEventListener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
 
   public send(type: string, data: any) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type, roomId: this.currentRoomId, payload: data.payload !== undefined ? data.payload : data }));
-    }
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type, roomId: this.currentRoomId, payload: data.payload !== undefined ? data.payload : data }));
   }
 
-  public broadcastPlayback(action: 'PLAY_PAUSE' | 'SEEK' | 'CHANGE_SONG' | 'SET_RATE', params: {
-    songId?: string;
-    position?: number;
-    isPlaying?: boolean;
-    playbackRate?: number;
-    senderName?: string;
-  }) {
-    if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) {
-      const nextQueue = [params.songId, ...this.roomQueue.filter((id) => id !== params.songId)];
-      this.updateQueue(nextQueue);
-    }
+  public broadcastPlayback(action: 'PLAY_PAUSE' | 'SEEK' | 'CHANGE_SONG' | 'SET_RATE', params: { songId?: string; position?: number; isPlaying?: boolean; playbackRate?: number; senderName?: string }) {
+    if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) this.updateQueue([params.songId, ...this.roomQueue.filter((id) => id !== params.songId)]);
     this.send('PLAYBACK_ACTION', { action, ...params });
   }
 
-  public updateQueue(queue: string[]) {
-    this.roomQueue = [...new Set(queue)];
-    this.roomState = { ...(this.roomState || {}), queue: this.roomQueue };
-    this.send('QUEUE_UPDATE', { queue: this.roomQueue });
-  }
-
-  public addSongToQueue(songId: string) {
-    if (!this.currentRoomId || !songId) return;
-    if (this.roomQueue.includes(songId)) return;
-    this.updateQueue([...this.roomQueue, songId]);
-  }
-
-  public removeSongFromQueue(songId: string) {
-    this.updateQueue(this.roomQueue.filter((id) => id !== songId));
-  }
-
-  public clearQueue() {
-    this.updateQueue([]);
-  }
-
+  public updateQueue(queue: string[]) { this.roomQueue = [...new Set(queue)]; this.roomState = { ...(this.roomState || {}), queue: this.roomQueue }; this.send('QUEUE_UPDATE', { queue: this.roomQueue }); }
+  public addSongToQueue(songId: string) { if (!this.currentRoomId || !songId || this.roomQueue.includes(songId)) return; this.updateQueue([...this.roomQueue, songId]); }
+  public removeSongFromQueue(songId: string) { this.updateQueue(this.roomQueue.filter((id) => id !== songId)); }
+  public clearQueue() { this.updateQueue([]); }
   public getQueue(): string[] { return [...this.roomQueue]; }
-
-  public getRoomState(): Partial<RoomState> | null {
-    return this.roomState ? { ...this.roomState, queue: [...(this.roomState.queue || this.roomQueue)] } : null;
-  }
-
+  public getRoomState(): Partial<RoomState> | null { return this.roomState ? { ...this.roomState, queue: [...(this.roomState.queue || this.roomQueue)] } : null; }
   public getRoomId(): string | null { return this.currentRoomId; }
-
   public getParticipantId(): string | null { return this.currentParticipant?.id || null; }
-
-  public isHost(): boolean {
-    const state = this.roomState;
-    return Boolean(state?.hostId && this.currentParticipant?.id && state.hostId === this.currentParticipant.id);
-  }
+  public isHost(): boolean { return Boolean(this.roomState?.hostId && this.currentParticipant?.id && this.roomState.hostId === this.currentParticipant.id); }
 
   public requestNextTrack() {
     if (!this.currentRoomId || !this.isHost()) return false;
-    const current = this.roomState?.currentSongId || null;
-    const queue = this.roomQueue;
-    if (!queue.length) return false;
-    const index = current ? queue.indexOf(current) : -1;
-    const next = queue[(index + 1 + queue.length) % queue.length];
+    const current = this.roomState?.currentSongId || null; const queue = this.roomQueue; if (!queue.length) return false;
+    const index = current ? queue.indexOf(current) : -1; const next = queue[(index + 1 + queue.length) % queue.length];
     if (!next || next === current) return false;
-    this.broadcastPlayback('CHANGE_SONG', {
-      songId: next,
-      position: 0,
-      isPlaying: true,
-      senderName: this.currentParticipant?.name || 'Host',
-    });
+    this.broadcastPlayback('CHANGE_SONG', { songId: next, position: 0, isPlaying: true, senderName: this.currentParticipant?.name || 'Host' });
     return true;
   }
 
   public sendChatMessage(text: string, options?: { type?: 'text' | 'reaction' | 'sound'; reactionEmoji?: string; soundName?: string }) {
     if (!this.currentParticipant) return;
-    this.send('SEND_CHAT', {
-      senderId: this.currentParticipant.id,
-      senderName: this.currentParticipant.name,
-      senderAvatar: this.currentParticipant.avatar,
-      text,
-      type: options?.type || 'text',
-      reactionEmoji: options?.reactionEmoji,
-      soundName: options?.soundName,
-    });
+    this.send('SEND_CHAT', { senderId: this.currentParticipant.id, senderName: this.currentParticipant.name, senderAvatar: this.currentParticipant.avatar, text, type: options?.type || 'text', reactionEmoji: options?.reactionEmoji, soundName: options?.soundName });
   }
-
-  public burstReaction(emoji: string, soundEffect?: string) {
-    if (!this.currentParticipant) return;
-    this.send('BURST_REACTION', { emoji, senderId: this.currentParticipant.id, senderName: this.currentParticipant.name, x: 0.2 + Math.random() * 0.6, soundEffect });
-  }
-
-  public syncFocusTimer(action: 'SET_TIMER' | 'TOGGLE_TIMER' | 'RESET_TIMER', payload: { timerType?: 'pomodoro' | 'stopwatch' | 'idle'; duration?: number; remaining?: number; isRunning?: boolean }) {
-    this.send('FOCUS_TIMER_ACTION', { action, ...payload });
-  }
-
+  public burstReaction(emoji: string, soundEffect?: string) { if (!this.currentParticipant) return; this.send('BURST_REACTION', { emoji, senderId: this.currentParticipant.id, senderName: this.currentParticipant.name, x: 0.2 + Math.random() * 0.6, soundEffect }); }
+  public syncFocusTimer(action: 'SET_TIMER' | 'TOGGLE_TIMER' | 'RESET_TIMER', payload: { timerType?: 'pomodoro' | 'stopwatch' | 'idle'; duration?: number; remaining?: number; isRunning?: boolean }) { this.send('FOCUS_TIMER_ACTION', { action, ...payload }); }
   public getLatency(): number { return this.latencyMs || 24; }
 
   public createRoom(roomName: string, hostName: string, moodTheme = 'love', isPrivate = false) {
     const roomId = 'room-' + Math.random().toString(36).substring(2, 8);
-    const participant = { id: this.currentParticipant?.id || 'host-' + Math.random().toString(36).substring(2, 6), name: hostName, avatar: this.currentParticipant?.avatar || '', };
+    const participant = { id: this.currentParticipant?.id || 'host-' + Math.random().toString(36).substring(2, 6), name: hostName, avatar: this.currentParticipant?.avatar || '' };
     this.connect(roomId, participant, { roomName, moodTheme, isPublic: !isPrivate });
   }
-
   public joinRoom(roomId: string, name: string, avatar: string) {
+    const cleanId = roomId.trim().match(/(?:[?&]room=)?([^/?#]+)$/)?.[1] || roomId.trim();
     const participant = { id: this.currentParticipant?.id || 'guest-' + Math.random().toString(36).substring(2, 6), name, avatar };
-    this.connect(roomId, participant);
+    this.connect(cleanId, participant);
   }
-
   public leaveRoom() { this.disconnect(); }
 
-  private startPing() {
-    this.stopPing();
-    this.pingInterval = window.setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
-    }, 10000);
-  }
-
-  private stopPing() {
-    if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
-  }
+  private startPing() { this.stopPing(); this.pingInterval = window.setInterval(() => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'PING', roomId: this.currentRoomId, payload: { timestamp: Date.now() } })); }, 10000); }
+  private stopPing() { if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; } }
 }
 
 export const wsClient = WebSocketClient.getInstance();
