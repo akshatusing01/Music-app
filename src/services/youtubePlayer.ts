@@ -55,7 +55,16 @@ class YouTubePlayerController {
       this.player = new window.YT.Player(this.host, {
         width: '100%',
         height: '100%',
-        playerVars: { autoplay: 0, controls: 1, playsinline: 1, rel: 0, modestbranding: 1, origin: window.location.origin },
+        playerVars: {
+          autoplay: 0,
+          controls: 1,
+          playsinline: 1,
+          rel: 0,
+          fs: 0,
+          iv_load_policy: 3,
+          modestbranding: 1,
+          origin: window.location.origin,
+        },
         events: {
           onReady: () => this.emit('syncbeat:youtube-ready'),
           onStateChange: (event: any) => {
@@ -95,6 +104,7 @@ class YouTubePlayerController {
   getCurrentTime() {
     return typeof this.player?.getCurrentTime === 'function' ? this.player.getCurrentTime() : this.state.currentTime;
   }
+
   getDuration() {
     return typeof this.player?.getDuration === 'function' ? this.player.getDuration() : this.state.duration;
   }
@@ -107,6 +117,7 @@ class YouTubePlayerController {
       this.emit('syncbeat:youtube-position', { ...this.state });
     }, 250);
   }
+
   private stopTicker() {
     if (this.ticker) window.clearInterval(this.ticker);
     this.ticker = null;
