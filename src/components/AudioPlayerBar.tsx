@@ -32,9 +32,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
     if (isYouTube) {
       youtubePlayer.setVolume(isMuted ? 0 : volume);
       if (isMuted) youtubePlayer.mute(); else youtubePlayer.unmute();
-    } else {
-      youtubePlayer.pause();
-    }
+    } else youtubePlayer.pause();
   }, [volume, isMuted, isYouTube]);
 
   useEffect(() => {
@@ -78,12 +76,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
   const seekFromClientX = (clientX: number) => { const rect = progressRef.current?.getBoundingClientRect(); if (!rect || rect.width <= 0) return; seekTo(((clientX - rect.left) / rect.width) * duration); };
   const skip = (amount: number) => seekTo(position + amount);
   const handleProgressPointerDown = (event: React.PointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); seekFromClientX(event.clientX); };
-
-  const handleTogglePlay = () => {
-    if (isYouTube) audioEngine.seek(youtubePlayer.getCurrentTime());
-    onTogglePlay();
-  };
-
+  const handleTogglePlay = () => onTogglePlay();
   const toggleLike = () => { setIsLiked((value) => !value); setIsDisliked(false); };
   const toggleDislike = () => { setIsDisliked((value) => !value); setIsLiked(false); };
 
@@ -97,7 +90,11 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
       <div className="mx-auto w-full max-w-[1600px] px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 sm:px-5 sm:py-2.5">
         {isYouTube && (
           <div className="mb-2 flex justify-center">
-            <div className="relative aspect-video w-[min(320px,calc(100vw-24px))] overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl sm:w-[360px]" aria-label="Video player">
+            <div
+              className="relative shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black shadow-lg"
+              style={{ width: 'min(230px, calc(100vw - 32px))', aspectRatio: '16 / 9', maxHeight: '130px' }}
+              aria-label="Now playing video"
+            >
               <div ref={youtubeHostRef} className="absolute inset-0 h-full w-full" />
             </div>
           </div>
@@ -105,7 +102,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = (props) => {
 
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] lg:items-center lg:gap-6">
           <div className="flex min-w-0 items-center gap-2.5 lg:max-w-[560px]">
-            <button type="button" onClick={onOpenLyrics} className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-white/10 bg-white/5 sm:h-12 sm:w-12" title="Open now playing"><img src={currentSong.coverArt} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" /><span className="absolute inset-0 hidden place-items-center bg-black/50 hover:grid"><ChevronUp size={18} /></span></button>
+            <button type="button" onClick={onOpenLyrics} className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-white/10 bg-white/5 sm:h-12 sm:w-12"><img src={currentSong.coverArt} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" /><span className="absolute inset-0 hidden place-items-center bg-black/50 hover:grid"><ChevronUp size={18} /></span></button>
             <button type="button" onClick={onOpenLyrics} className="min-w-0 flex-1 text-left"><div className="truncate text-sm font-semibold leading-5 text-white">{currentSong.title}</div><div className="truncate text-xs leading-4 text-zinc-400">{currentSong.artist}</div></button>
             <div className="hidden shrink-0 items-center gap-0.5 sm:flex"><button type="button" onClick={toggleLike} className={`${iconButton} ${isLiked ? 'text-rose-400' : ''}`} aria-label="Like"><Heart size={17} fill={isLiked ? 'currentColor' : 'none'} /></button><button type="button" onClick={toggleDislike} className={`${iconButton} ${isDisliked ? 'text-white' : ''}`} aria-label="Dislike"><ThumbsDown size={16} fill={isDisliked ? 'currentColor' : 'none'} /></button></div>
           </div>
