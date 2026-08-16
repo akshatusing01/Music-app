@@ -58,6 +58,7 @@ export class WebSocketClient {
           }
           if (data.type === 'PLAYBACK_SYNC' && data.payload) {
             data.payload.songId = data.payload.songId || data.payload.currentSongId;
+            data.payload.position = data.payload.position ?? data.payload.playbackPosition ?? 0;
             this.roomState = {
               ...(this.roomState || {}),
               currentSongId: data.payload.currentSongId || data.payload.songId || null,
