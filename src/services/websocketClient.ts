@@ -1,4 +1,4 @@
-import type { RoomState } from '../types';
+import type { RoomState, Song } from '../types';
 
 export type WebSocketEventListener = (event: { type: string; payload: any }) => void;
 
@@ -9,7 +9,7 @@ export class WebSocketClient {
   private reconnectTimeout: number | null = null;
   private currentRoomId: string | null = null;
   private currentParticipant: { id: string; name: string; avatar: string } | null = null;
-  private currentRoomOptions: { roomName?: string; moodTheme?: string; initialSongId?: string; isPublic?: boolean } | undefined;
+  private currentRoomOptions: { roomName?: string; moodTheme?: string; initialSongId?: string; initialSong?: Song; isPublic?: boolean } | undefined;
   private roomQueue: string[] = [];
   private roomState: Partial<RoomState> | null = null;
   private isExplicitlyClosed = false;
@@ -24,7 +24,7 @@ export class WebSocketClient {
     return WebSocketClient.instance;
   }
 
-  public connect(roomId: string, participant: { id: string; name: string; avatar: string }, options?: { roomName?: string; moodTheme?: string; initialSongId?: string; isPublic?: boolean }) {
+  public connect(roomId: string, participant: { id: string; name: string; avatar: string }, options?: { roomName?: string; moodTheme?: string; initialSongId?: string; initialSong?: Song; isPublic?: boolean }) {
     this.currentRoomId = roomId;
     this.currentParticipant = participant;
     this.currentRoomOptions = options;
@@ -52,7 +52,7 @@ export class WebSocketClient {
           if (data.type === 'PLAYBACK_SYNC' && data.payload) {
             data.payload.songId = data.payload.songId || data.payload.currentSongId;
             data.payload.position = data.payload.position ?? data.payload.playbackPosition ?? 0;
-            this.roomState = { ...(this.roomState || {}), currentSongId: data.payload.currentSongId || data.payload.songId || null, isPlaying: data.payload.isPlaying, playbackPosition: data.payload.playbackPosition ?? data.payload.position ?? 0, playbackRate: data.payload.playbackRate ?? 1, lastStateUpdate: data.payload.lastStateUpdate ?? Date.now() };
+            this.roomState = { ...(this.roomState || {}), currentSongId: data.payload.currentSongId || data.payload.songId || null, currentSong: data.payload.song || this.roomState?.currentSong, isPlaying: data.payload.isPlaying, playbackPosition: data.payload.playbackPosition ?? data.payload.position ?? 0, playbackRate: data.payload.playbackRate ?? 1, lastStateUpdate: data.payload.lastStateUpdate ?? Date.now() };
           }
           if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants };
           if (data.type === 'PARTICIPANT_LEFT' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, hostId: data.payload.newHostId || this.roomState?.hostId };
@@ -91,7 +91,7 @@ export class WebSocketClient {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type, roomId: this.currentRoomId, payload: data.payload !== undefined ? data.payload : data }));
   }
 
-  public broadcastPlayback(action: 'PLAY_PAUSE' | 'SEEK' | 'CHANGE_SONG' | 'SET_RATE', params: { songId?: string; position?: number; isPlaying?: boolean; playbackRate?: number; senderName?: string }) {
+  public broadcastPlayback(action: 'PLAY_PAUSE' | 'SEEK' | 'CHANGE_SONG' | 'SET_RATE', params: { songId?: string; song?: Song; position?: number; isPlaying?: boolean; playbackRate?: number; senderName?: string }) {
     if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) this.updateQueue([params.songId, ...this.roomQueue.filter((id) => id !== params.songId)]);
     this.send('PLAYBACK_ACTION', { action, ...params });
   }
