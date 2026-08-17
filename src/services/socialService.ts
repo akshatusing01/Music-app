@@ -1,6 +1,8 @@
 import { supabase } from './supabaseClient';
 
 export type PublicProfile = { id: string; displayName: string; avatarUrl: string; friendCode: string };
+export type IncomingFriendRequest = { id: string; senderId: string; status: string; createdAt: string; profile: PublicProfile | null };
+export type IncomingRoomInvite = { id: string; roomId: string; inviterId: string; createdAt: string; profile: PublicProfile | null };
 
 async function requireUser() {
   if (!supabase) throw new Error('Cloud authentication is not configured.');
@@ -8,6 +10,13 @@ async function requireUser() {
   if (error) throw error;
   if (!user) throw new Error('Please sign in to use social features.');
   return user;
+}
+
+async function profilesByIds(ids: string[]) {
+  if (!supabase || ids.length === 0) return new Map<string, PublicProfile>();
+  const { data, error } = await supabase.from('profiles').select('id,display_name,avatar_url,friend_code').in('id', ids);
+  if (error) throw error;
+  return new Map((data || []).map((row) => [row.id, { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url || '', friendCode: row.friend_code || '' }]));
 }
 
 export const socialService = {
@@ -19,7 +28,6 @@ export const socialService = {
     if (error) throw error;
     return data ? { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url || '', friendCode: data.friend_code || '' } : null;
   },
-
   async uploadAvatar(file: File): Promise<string> {
     const user = await requireUser();
     if (!supabase) throw new Error('Cloud authentication is not configured.');
@@ -27,7 +35,7 @@ export const socialService = {
     if (file.size > 5 * 1024 * 1024) throw new Error('Profile picture must be 5 MB or smaller.');
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type, cacheControl: '3600' });
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: false, contentType: file.type, cacheControl: '3600' });
     if (uploadError) throw uploadError;
     const { data } = supabase.storage.from('avatars').getPublicUrl(path);
     const avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
@@ -35,7 +43,6 @@ export const socialService = {
     if (profileError) throw profileError;
     return avatarUrl;
   },
-
   async findByFriendCode(friendCode: string): Promise<PublicProfile | null> {
     if (!supabase) return null;
     const code = friendCode.trim().toLowerCase();
@@ -44,7 +51,6 @@ export const socialService = {
     if (error) throw error;
     return data ? { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url || '', friendCode: data.friend_code || '' } : null;
   },
-
   async sendFriendRequest(friendCode: string) {
     const user = await requireUser();
     const target = await this.findByFriendCode(friendCode);
@@ -53,7 +59,18 @@ export const socialService = {
     const { error } = await supabase!.from('friend_requests').upsert({ sender_id: user.id, recipient_id: target.id, status: 'pending', updated_at: new Date().toISOString() }, { onConflict: 'sender_id,recipient_id' });
     if (error) throw error;
   },
-
+  async listIncomingFriendRequests(): Promise<IncomingFriendRequest[]> {
+    const user = await requireUser();
+    const { data, error } = await supabase!.from('friend_requests').select('id,sender_id,status,created_at').eq('recipient_id', user.id).eq('status', 'pending').order('created_at', { ascending: false });
+    if (error) throw error;
+    const profiles = await profilesByIds((data || []).map((row) => row.sender_id));
+    return (data || []).map((row) => ({ id: row.id, senderId: row.sender_id, status: row.status, createdAt: row.created_at, profile: profiles.get(row.sender_id) || null }));
+  },
+  async respondFriendRequest(id: string, status: 'accepted' | 'declined') {
+    const user = await requireUser();
+    const { error } = await supabase!.from('friend_requests').update({ status, updated_at: new Date().toISOString() }).eq('id', id).eq('recipient_id', user.id);
+    if (error) throw error;
+  },
   async sendRoomInvite(roomId: string, friendCode: string) {
     const user = await requireUser();
     const target = await this.findByFriendCode(friendCode);
@@ -62,11 +79,16 @@ export const socialService = {
     const { error } = await supabase!.from('room_invites').insert({ room_id: roomId, inviter_id: user.id, invitee_id: target.id, status: 'pending' });
     if (error) throw error;
   },
-
-  async listIncomingRoomInvites() {
+  async listIncomingRoomInvites(): Promise<IncomingRoomInvite[]> {
     const user = await requireUser();
-    const { data, error } = await supabase!.from('room_invites').select('id,room_id,status,created_at,profiles!room_invites_inviter_id_fkey(display_name,avatar_url,friend_code)').eq('invitee_id', user.id).eq('status', 'pending').order('created_at', { ascending: false });
+    const { data, error } = await supabase!.from('room_invites').select('id,room_id,inviter_id,created_at').eq('invitee_id', user.id).eq('status', 'pending').order('created_at', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const profiles = await profilesByIds((data || []).map((row) => row.inviter_id));
+    return (data || []).map((row) => ({ id: row.id, roomId: row.room_id, inviterId: row.inviter_id, createdAt: row.created_at, profile: profiles.get(row.inviter_id) || null }));
+  },
+  async respondRoomInvite(id: string, status: 'accepted' | 'declined') {
+    const user = await requireUser();
+    const { error } = await supabase!.from('room_invites').update({ status, updated_at: new Date().toISOString() }).eq('id', id).eq('invitee_id', user.id);
+    if (error) throw error;
   },
 };
