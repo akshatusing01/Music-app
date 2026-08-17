@@ -8,17 +8,10 @@
 
 - Product is evolving from a functional prototype into a real, polished app.
 - Existing functionality should be preserved or improved while the UI is substantially redesigned.
-- Work in explicit stages:
-  1. Product/UI discovery and questions
-  2. UX structure and information architecture
-  3. Visual design system
-  4. Technical architecture validation
-  5. Implementation in controlled milestones
-  6. Production verification and bug-fixing
-  7. Polish/performance/security
+- Work in explicit stages: discovery/questions → UX/IA → visual design → technical architecture → controlled implementation → production verification → polish/security.
 - No major redesign should silently remove a working feature.
 - No deployment should be called "ready" without checking the actual deployment/build/runtime status available to us.
-- Mobile is a first-class target because the app is regularly tested on phones.
+- Mobile is a first-class target.
 - Keep major product decisions in this file so future conversations can recover context from the repository.
 
 ## 1. Product Vision
@@ -32,14 +25,11 @@
 ## 2. Current Functional Foundation
 
 Existing capabilities to preserve/improve:
-- Real YouTube music search/results
-- Real YouTube playback
+- Real YouTube music search/results and playback
 - Queue/player controls
 - Real-time listening rooms
-- Room invite links
-- Room-name joining
-- Host-authoritative playback synchronization
-- Mobile autoplay fallback for synchronized YouTube playback
+- Room invite links and room-name joining
+- Host-authoritative playback synchronization and mobile autoplay fallback
 - Live chat/reactions
 - Host transfer / automatic host promotion
 - In-room YouTube search
@@ -48,8 +38,7 @@ Existing capabilities to preserve/improve:
 - Supabase-backed auth/cloud persistence foundation
 - Profile avatar upload
 - Persistent SyncBeat ID/friend-code foundation
-- Friend requests
-- Room invitations
+- Friend requests and room invitations
 
 ## 3. Current Technical Foundation
 
@@ -82,8 +71,7 @@ Primary mobile navigation is:
 Sessions is a **major first-class destination**, equal in importance to Home and Discover.
 
 ### Player decision
-The player becomes a **music cockpit** rather than a conventional bottom bar.
-It should support a compact state and an expanded immersive state while maintaining fast access to essential playback controls.
+The player becomes a **music cockpit** rather than a conventional bottom bar. It should support a compact state and an expanded immersive state while maintaining fast access to essential playback controls.
 
 ### Mobile player priority
 Three controls must always be instantly reachable:
@@ -98,32 +86,16 @@ Cineosync Music will support a **public discovery layer**, while still supportin
 The user's visible username/handle is a first-class identity across the product, not something hidden only inside settings.
 
 ### Discovery decision
-Discovery should adapt to listener context:
-- Returning users: past listening activity, saved tastes, recent behavior, and evolving preferences.
-- New users: onboarding preferences such as artists, languages, genres, moods, and listening goals.
-- Discovery should eventually blend these signals with context such as time, mode, sessions, and lifestyle intent.
+Discovery should adapt to listener context: past activity and saved tastes for returning users; artists, languages, genres, moods, and goals for new users; eventually blended with time, mode, sessions, and lifestyle intent.
 
-## 5. Stage B — UX / Information Architecture Blueprint — LOCKED
+## 5. Stage B — UX / Information Architecture — LOCKED
 
 ### 5.1 App shell
-Persistent shell should feel like one coherent music environment rather than a collection of pages.
+Desktop: left navigation rail/expandable sidebar, central content stage, optional contextual right rail, persistent compact cockpit.
 
-Desktop:
-- Left navigation rail / expandable sidebar
-- Central content stage
-- Optional contextual right rail
-- Persistent compact music cockpit
-
-Mobile:
-- 5-item bottom navigation: Home / Discover / Sessions / Library / Profile
-- Persistent compact cockpit above navigation when music is active
-- Cockpit expands into a full-screen/near-full-screen Now Playing experience
-- No controls or chat should be obscured by fixed UI
+Mobile: 5-item bottom navigation Home / Discover / Sessions / Library / Profile; persistent compact cockpit above navigation when active; cockpit expands into a full-screen/near-full-screen experience; fixed UI must never obscure content, chat, or controls.
 
 ### 5.2 Home — "For You"
-Home should be a personalized listening environment, not a generic dashboard.
-
-Recommended hierarchy:
 1. Greeting + current identity/presence
 2. Continue listening / resume context
 3. Personalized discovery
@@ -133,171 +105,143 @@ Recommended hierarchy:
 7. Sessions worth joining
 8. Curated editorial / emerging discovery
 
-New-user state:
-- Short preference onboarding rather than an empty feed.
-- Ask for artists, languages, genres, moods, and use cases.
-- Use those signals to immediately create a useful first home feed.
+New-user state: progressive preference onboarding for artists, languages, genres, moods, and use cases.
 
 ### 5.3 Discover
-Discover is the exploration engine.
-
-Sections should be context-driven instead of static:
-- Search
-- Trending in your language/region
-- Because you listened to...
-- Artist discovery
-- Language discovery
-- Mood discovery
-- Lifestyle: Focus / Gym / Couple / Chill / Travel etc.
-- Public rooms
-- Community moments / recommendations
+Context-driven exploration: Search, regional/language trends, because-you-listened-to, artist/language/mood discovery, lifestyle modes, public rooms, community moments/recommendations.
 
 ### 5.4 Sessions
-Sessions is a primary destination and social control center.
-
-Core states:
-- Discover public rooms
-- Create room
-- Join existing room by name, ID, or link
-- Invitations
-- Active room
-- Participants
-- Shared playback
-- Queue
-- Chat/reactions
-- Host controls
-- Host transfer
-- Room discovery/public visibility
-
-The active room should feel like a distinct social space without removing the rest of the app's identity.
+First-class social control center: discover public rooms, create, join by name/ID/link, invitations, active room, participants, shared playback, queue, chat/reactions, host controls, host transfer, public visibility.
 
 ### 5.5 Library
-Library should focus on the user's relationship with music:
-- Liked
-- Playlists
-- Recently played
-- Imported playlists
-- Saved sessions/moments (future)
-- Offline/downloads where supported
+Liked, playlists, recently played, imported playlists, saved sessions/moments (future), supported offline/downloads.
 
 ### 5.6 Profile
-Profile should become a social identity hub:
-- Avatar
-- Visible username/handle
-- SyncBeat ID
-- Listening identity / genres / languages
-- Friends
-- Friend requests
-- Room invites
-- Listening activity/privacy
-- Account/auth
-- Preferences
-- Appearance/audio settings
+Avatar, visible username, SyncBeat ID, listening identity, friends, friend requests, room invites, activity/privacy, account/auth, preferences, appearance/audio settings.
 
 ### 5.7 Music cockpit
-Compact state:
-- Artwork
-- Track / artist
-- Play/pause
-- Forward
-- Like
-- Progress hint
-
-Expanded cockpit:
-- Large artwork / visual atmosphere
-- Full playback controls
-- Queue
-- Lyrics
-- Session context
-- Share
-- Playback settings
-- Equalizer
-- Output/quality controls
-
-The cockpit should feel like the app's signature interaction, not a generic media bar.
+Compact: artwork, track/artist, play/pause, forward, like, progress hint.
+Expanded: large artwork/atmosphere, full controls, queue, lyrics, session context, share, playback settings, equalizer, output/quality controls.
 
 ## 6. Stage B Decisions — CONFIRMED
 
-1. **Home hero / personalized destination:** `For You`.
-2. **Public rooms:** appear in both Discover and Sessions, with different purposes. Discover emphasizes editorial/recommended rooms; Sessions is the complete room discovery/control center.
-3. **Accent system:** one recognizable Cineosync primary accent, with restrained contextual variations for Focus/Gym/Couple and other modes. The brand remains visually coherent.
-4. **Music Cockpit:** immersive overlay/bottom-sheet interaction rather than a separate route. Music remains present while navigation friction stays low.
-5. **Identity:** visible, editable unique username/handle for people-facing identity; immutable internal SyncBeat ID for backend identity.
-6. **Onboarding:** progressive onboarding. Users can explore immediately, then provide artists/languages/genres/moods/use cases when personalization benefits from it.
+1. Home hero/personalized destination: **For You**.
+2. Public rooms appear in both **Discover + Sessions**; Discover emphasizes editorial/recommended rooms, Sessions is the complete room discovery/control center.
+3. **One recognizable Cineosync primary accent**, with restrained contextual variations for Focus/Gym/Couple.
+4. **Immersive cockpit overlay/bottom-sheet**, not a separate route.
+5. **Visible editable username/handle** for people-facing identity; **immutable SyncBeat ID** for backend identity.
+6. **Progressive onboarding**: immediate exploration first, personalization prompts when useful.
 
-## 7. Discovery / Recommendation Architecture Direction
+## 7. Stage C — Visual Design Direction — LOCKED
+
+### 7.1 Emotional core
+User selected:
+- **D — Editorial Luxury**
+- **E — Intelligent**
+
+The combined emotional direction is **Editorial Luxury × Intelligent Music**.
+
+Cineosync should feel like a premium contemporary music/culture publication that understands the listener personally. It should be sophisticated and restrained, but the interface should visibly adapt to context rather than behaving like a static catalog.
+
+### 7.2 Visual personality
+- Quiet confidence rather than flashy futurism.
+- Strong typography and editorial composition.
+- Generous negative space.
+- High-quality artwork/photography as visual anchors.
+- Intelligent content hierarchy and contextual modules.
+- Premium dark surfaces with subtle glass used selectively.
+- Motion communicates state and intelligence rather than spectacle.
+- Avoid obvious Spotify/Apple Music/YouTube Music imitation.
+
+### 7.3 Color system
+- Primary foundation: near-black obsidian.
+- Supporting surfaces: graphite/charcoal.
+- Glass: low-opacity neutral translucent surfaces with controlled blur.
+- Brand accent: one restrained Cineosync accent, used sparingly for actions, progress, active states and key identity moments.
+- Semantic colors only where they communicate state.
+- Artwork can provide contextual color atmosphere, but must not redefine the core brand palette.
+
+### 7.4 Typography
+Typography should carry a large part of the identity.
+- Display/headline face: distinctive editorial character, used selectively for major titles and identity moments.
+- UI/body face: highly legible, neutral, modern.
+- Strong hierarchy through size, weight, tracking and whitespace rather than excessive decorative styling.
+- Track metadata remains compact and highly scannable.
+- Monospace only for technical/session metadata when it adds meaning.
+
+### 7.5 Layout language
+- Editorial asymmetry is allowed on larger screens.
+- Mobile remains structured and predictable despite the editorial aesthetic.
+- Prefer composition and sections over endless rounded cards.
+- Use large visual anchors followed by dense-but-readable supporting lists.
+- Content should feel curated rather than algorithmically dumped onto the screen.
+
+### 7.6 Glass and surfaces
+- Glass is a supporting material, not the identity itself.
+- Use it for cockpit, overlays, session controls, contextual floating tools and high-value transient UI.
+- Avoid applying blur/transparency to every container.
+- Surfaces should have subtle borders, depth and separation without excessive shadows.
+
+### 7.7 Intelligent UI behavior
+The interface should adapt based on context:
+- New vs returning listener
+- Current listening activity
+- Current mode (Focus/Gym/Couple/etc.)
+- Session participation
+- Time/context where useful
+- Personal preferences
+
+Examples:
+- A returning listener sees Continue Listening and behavior-based recommendations first.
+- A new listener sees a concise preference setup and immediately useful starter music.
+- A user inside a session sees room context without losing access to music discovery.
+- The cockpit changes density based on compact/expanded state.
+
+The UI should explain recommendation intent where appropriate (e.g. "Because you played…") rather than pretending the algorithm is magic.
+
+### 7.8 Motion language
+- Editorial, smooth, restrained.
+- Use spring/ease transitions for cockpit expansion, page/module reveals, session state and contextual recommendations.
+- Avoid constant floating animations or decorative motion.
+- Respect reduced-motion preferences.
+
+## 8. Stage C — Component Principles
+
+Reusable primitives will be designed before full screens:
+- App shell/navigation
+- Typography tokens
+- Surface/section primitives
+- Buttons and icon buttons
+- Search field
+- Track row
+- Artist row
+- Album/artwork tile
+- Playlist module
+- Recommendation module
+- Mood/lifestyle module
+- Room card
+- Participant/avatar stack
+- Chat message/input
+- Music cockpit compact/expanded
+- Progress/seek control
+- Queue drawer
+- Modal/sheet
+- Toast/notification
+- Empty/loading/error states
+
+Each component must have responsive, accessible states before being composed into screens.
+
+## 9. Discovery / Recommendation Architecture Direction
 
 Future recommendation system should be modular and explainable.
 
-Signal groups:
-- Explicit preferences: artists, languages, genres, moods
-- Behavioral: plays, skips, repeats, likes, saves, playlist edits
-- Context: time, day, device, current mode, focus/gym/couple intent
-- Social: friends' activity, public room trends, shared listening
-- Freshness: new releases, emerging artists, changing tastes
+Signals: explicit preferences; plays/skips/repeats/likes/saves; context; social activity; freshness.
 
-Recommendation output types:
-- Track rows
-- Artist modules
-- Mood collections
-- Contextual mixes
-- Public room recommendations
-- "Because you listened to..." explanations
-
-Do not make recommendations feel like an opaque algorithmic feed.
-
-## 8. Design System Direction
-
-### Color
-- Base: near-black obsidian surfaces
-- Secondary: graphite/charcoal surfaces
-- Glass: restrained translucent white/gray layers
-- Accent: one primary restrained accent with limited semantic supporting colors
-- Status colors reserved for states, not decoration
-
-### Typography
-- Strong display style for identity/headings
-- Highly readable UI/body text
-- Monospace only for technical/session metadata where useful
-- Clear typographic hierarchy rather than excessive font-size variation
-
-### Surfaces
-- Soft rounded geometry, but not every element as a floating card
-- Use sections, dividers, depth and whitespace to avoid card overload
-- Glass primarily for high-value overlays/cockpit/session surfaces
-
-### Motion
-- Motion should communicate hierarchy and state, not decorate every interaction.
-- Use subtle spring transitions for cockpit expansion, tab changes, room state, and content reveals.
-- Avoid excessive continuous animation that increases cognitive load or battery use.
-
-## 9. Stage C — Next: Visual Design System
-
-**Status:** Ready to begin.
-
-Stage C will define the actual visual language before implementation:
-- Cineosync color tokens and accent behavior
-- Typography scale and font pairing
-- Iconography rules
-- Grid/spacing system
-- Radius and surface geometry
-- Glass treatment
-- Shadows/depth
-- Artwork treatment
-- Buttons/inputs/toggles
-- Track rows and playlist modules
-- Session/participant/chat components
-- Cockpit states
-- Empty/loading/error states
-- Responsive breakpoints
-- Accessibility/contrast rules
-- Motion principles
-
-**Implementation rule:** do not rewrite the whole app UI until Stage C is documented and approved. Build reusable primitives first, then compose screens from them.
+Outputs: track rows, artist modules, mood collections, contextual mixes, public room recommendations, explainable because-you-listened-to modules.
 
 ## 10. Implementation Milestones — PLANNED
 
-1. Visual foundation/tokens
+1. Visual tokens and primitives
 2. App shell + responsive navigation
 3. For You/Home
 4. Discover
@@ -309,6 +253,8 @@ Stage C will define the actual visual language before implementation:
 10. Polish/accessibility/performance
 11. Production QA
 
+**Implementation rule:** Do not rewrite the whole UI until the visual tokens/primitives are documented and approved. Build reusable primitives first, then compose screens from them.
+
 ## 11. Decision & Change Log
 
 - 2026-08-18: Product direction locked as Cineosync Music: creative music + lifestyle platform.
@@ -316,16 +262,17 @@ Stage C will define the actual visual language before implementation:
 - 2026-08-18: Sessions confirmed as a major first-class destination.
 - 2026-08-18: Player direction locked as signature Music Cockpit.
 - 2026-08-18: Mobile essential controls locked: Play/Pause, Forward, Like.
-- 2026-08-18: Visual direction locked: Obsidian + subtle glass + restrained accent.
+- 2026-08-18: Visual base locked: Obsidian + subtle glass + restrained accent.
 - 2026-08-18: Design language must be original rather than a Spotify/YouTube Music clone.
 - 2026-08-18: Public discovery layer confirmed.
 - 2026-08-18: Visible username/handle confirmed as first-class identity.
 - 2026-08-18: Final product name confirmed: Cineosync Music.
 - 2026-08-18: Stage B recommendations accepted: For You, public rooms in Discover + Sessions, one core accent system, immersive cockpit overlay, username + immutable SyncBeat ID, progressive onboarding.
-- 2026-08-18: Stage C opened for visual system definition before major UI implementation.
+- 2026-08-18: Stage C emotional core selected: Editorial Luxury + Intelligent.
+- 2026-08-18: Stage C visual principles documented and locked.
 
 ## 12. Verification Notes
 
 - This document is intentionally kept in-repo so future sessions can recover product decisions without relying on conversation context.
-- Feature verification must distinguish between code/build verification and real multi-device/browser verification.
+- Feature verification must distinguish code/build verification from real multi-device/browser verification.
 - Never claim realtime/mobile/autoplay behavior is fully verified unless it has actually been tested in the relevant environment.
