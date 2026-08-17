@@ -1,5 +1,6 @@
 import type { RoomState, Song, UserProfile } from '../types';
 import { audioEngine } from './audioEngine';
+import { youtubePlayer } from './youtubePlayer';
 
 export type WebSocketEventListener = (event: { type: string; payload: any }) => void;
 function getLocalProfile(): UserProfile | null { try { return JSON.parse(localStorage.getItem('syncbeat:v2:profile') || 'null') as UserProfile | null; } catch { return null; } }
@@ -31,7 +32,7 @@ export class WebSocketClient {
             this.roomState = data.payload as Partial<RoomState>; this.roomQueue = [...(data.payload.queue || [])]; this.listeners.forEach((listener) => listener(data));
             const state = data.payload;
             if (state.currentSong) void this.applyRemotePlayback(state.currentSong as Song, Boolean(state.isPlaying), Number(state.playbackPosition || 0), Number(state.playbackRate || 1), 'INITIAL_SYNC');
-            else if (state.isPlaying === false) audioEngine.pause();
+            else if (state.isPlaying === false) { audioEngine.pause(); youtubePlayer.pause(); }
             window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { songId: state.currentSongId, song: state.currentSong || null, isPlaying: Boolean(state.isPlaying), position: Number(state.playbackPosition || 0), playbackPosition: Number(state.playbackPosition || 0), playbackRate: Number(state.playbackRate || 1), lastStateUpdate: state.lastStateUpdate } })); return;
           }
           if (data.type === 'QUEUE_SYNC' && data.payload?.queue) { this.roomQueue = [...data.payload.queue]; this.roomState = { ...(this.roomState || {}), queue: this.roomQueue }; this.listeners.forEach((listener) => listener(data)); return; }
@@ -39,8 +40,8 @@ export class WebSocketClient {
             const songId = data.payload.songId || data.payload.currentSongId || null; const position = Number(data.payload.position ?? data.payload.playbackPosition ?? 0); const song = (data.payload.song as Song | null) || (songId ? getStoredSong(songId) : null);
             this.roomState = { ...(this.roomState || {}), currentSongId: songId, currentSong: song || this.roomState?.currentSong || null, isPlaying: Boolean(data.payload.isPlaying), playbackPosition: position, playbackRate: Number(data.payload.playbackRate ?? 1), lastStateUpdate: data.payload.lastStateUpdate ?? Date.now() };
             const isRemote = data.payload.actionBy && data.payload.actionBy !== this.currentParticipant?.id;
-            if (isRemote) void this.applyRemotePlayback(song, Boolean(data.payload.isPlaying), position, Number(data.payload.playbackRate ?? 1), data.payload.action || 'PLAY_PAUSE');
-            window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { ...data.payload, songId, song, position, playbackPosition: position } }));
+            if (isRemote) void this.applyRemotePlayback(song || this.roomState.currentSong as Song | null, Boolean(data.payload.isPlaying), position, Number(data.payload.playbackRate ?? 1), data.payload.action || 'PLAY_PAUSE');
+            window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { ...data.payload, songId, song: song || this.roomState.currentSong || null, position, playbackPosition: position } }));
             this.listeners.forEach((listener) => listener(data)); this.listeners.forEach((listener) => listener({ type: 'ROOM_SYNC_STATE', payload: this.roomState })); return;
           }
           if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, chatMessages: data.payload.systemMessage ? [...(this.roomState?.chatMessages || []), data.payload.systemMessage].slice(-80) : this.roomState?.chatMessages };
@@ -58,8 +59,26 @@ export class WebSocketClient {
 
   private async applyRemotePlayback(song: Song | null, playing: boolean, position: number, rate: number, action: string) {
     try {
+      if (!song) return;
+      if (song.youtubeVideoId) {
+        if (action === 'CHANGE_SONG' || action === 'INITIAL_SYNC') {
+          await youtubePlayer.load(song.youtubeVideoId, Math.max(0, position), playing, rate);
+          if (!playing) youtubePlayer.pause();
+          return;
+        }
+        if (action === 'SEEK') {
+          youtubePlayer.setRate(rate);
+          youtubePlayer.seek(position);
+          if (playing) youtubePlayer.play(); else youtubePlayer.pause();
+          return;
+        }
+        if (action === 'SET_RATE') { youtubePlayer.setRate(rate); return; }
+        youtubePlayer.setRate(rate);
+        if (Math.abs(youtubePlayer.getCurrentTime() - position) > 0.35) youtubePlayer.seek(position);
+        if (playing) youtubePlayer.play(); else youtubePlayer.pause();
+        return;
+      }
       if (action === 'CHANGE_SONG' || action === 'INITIAL_SYNC') {
-        if (!song) return;
         await audioEngine.playSong(song, Math.max(0, position), rate);
         if (!playing) audioEngine.pause();
         return;
@@ -75,8 +94,11 @@ export class WebSocketClient {
   public addListener(listener: WebSocketEventListener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   public send(type: string, data: any) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type, roomId: this.currentRoomId, payload: data.payload !== undefined ? data.payload : data })); }
   public broadcastPlayback(action: 'PLAY_PAUSE' | 'SEEK' | 'CHANGE_SONG' | 'SET_RATE', params: { songId?: string; song?: Song; position?: number; isPlaying?: boolean; playbackRate?: number; senderName?: string }) {
-    if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) { const song = params.song || getStoredSong(params.songId) || undefined; this.updateQueue([params.songId, ...this.roomQueue.filter((id) => id !== params.songId)]); this.send('PLAYBACK_ACTION', { action, ...params, song }); return; }
-    this.send('PLAYBACK_ACTION', { action, ...params });
+    const roomSong = params.song || this.roomState?.currentSong || (params.songId ? getStoredSong(params.songId) : null);
+    const isYouTubeRoom = Boolean(roomSong?.youtubeVideoId);
+    const effectivePosition = action === 'CHANGE_SONG' ? Number(params.position || 0) : (isYouTubeRoom ? youtubePlayer.getCurrentTime() : Number(params.position || 0));
+    if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) { const song = params.song || getStoredSong(params.songId) || undefined; this.updateQueue([params.songId, ...this.roomQueue.filter((id) => id !== params.songId)]); this.send('PLAYBACK_ACTION', { action, ...params, position: effectivePosition, song }); return; }
+    this.send('PLAYBACK_ACTION', { action, ...params, position: effectivePosition });
   }
   public updateQueue(queue: string[]) { this.roomQueue = [...new Set(queue)]; this.roomState = { ...(this.roomState || {}), queue: this.roomQueue }; this.send('QUEUE_UPDATE', { queue: this.roomQueue }); }
   public getQueue(): string[] { return [...this.roomQueue]; }
