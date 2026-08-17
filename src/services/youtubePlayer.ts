@@ -29,8 +29,46 @@ class YouTubePlayerController {
   private pendingLoad: PendingLoad | null = null;
   private desiredPlaying = false;
 
+  constructor() {
+    window.addEventListener('syncbeat:room-playback', (event) => {
+      const detail = (event as CustomEvent<any>).detail;
+      if (!detail) return;
+      this.applyRoomPlayback(detail);
+    });
+  }
+
   private emit(name: string, detail: unknown = {}) {
     window.dispatchEvent(new CustomEvent(name, { detail }));
+  }
+
+  private async applyRoomPlayback(payload: any) {
+    const song = payload.song;
+    const remoteVideoId = song?.youtubeVideoId || null;
+    const position = Math.max(0, Number(payload.position ?? payload.playbackPosition ?? 0));
+    const rate = Math.max(0.25, Math.min(2, Number(payload.playbackRate ?? 1)));
+    const shouldPlay = Boolean(payload.isPlaying);
+
+    if (!remoteVideoId) return;
+
+    // A joined listener may not have this YouTube result in its local catalog.
+    // The room now carries the complete Song metadata, so the player can sync
+    // directly from the authoritative host state.
+    if (this.videoId !== remoteVideoId) {
+      await this.load(remoteVideoId, position, shouldPlay, rate);
+      return;
+    }
+
+    if (!this.ready) {
+      this.pendingLoad = { videoId: remoteVideoId, startSeconds: position, autoplay: shouldPlay, rate };
+      return;
+    }
+
+    this.setRate(rate);
+    const local = this.getCurrentTime();
+    if (Math.abs(local - position) > 0.35) this.seek(position);
+
+    if (shouldPlay && !this.isActuallyPlaying()) this.play();
+    if (!shouldPlay && this.isActuallyPlaying()) this.pause();
   }
 
   private loadApi(): Promise<void> {
@@ -168,10 +206,7 @@ class YouTubePlayerController {
 
   play() {
     this.desiredPlaying = true;
-    if (!this.player || !this.ready) {
-      this.desiredPlaying = true;
-      return;
-    }
+    if (!this.player || !this.ready) return;
     this.player.playVideo?.();
   }
 
