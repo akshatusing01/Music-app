@@ -30,12 +30,21 @@ wss.on('connection', (ws) => {
     try {
       const message = JSON.parse(raw.toString()); const type = message.type; const payload = message.payload || {};
       if (type === 'PING') { send(ws, 'PONG', { timestamp: payload.timestamp || Date.now() }); return; }
+      if (type === 'FIND_ROOM') {
+        const requestedName = String(payload.roomName || '').trim().toLowerCase();
+        const found = requestedName ? [...rooms.values()].find((candidate) => candidate.isPublic && candidate.roomName.toLowerCase() === requestedName) : null;
+        send(ws, 'ROOM_LOOKUP_RESULT', { roomId: found?.roomId || null, roomName: found?.roomName || null });
+        return;
+      }
       if (type === 'JOIN_ROOM') {
         const requestedId = String(message.roomId || '').trim(); if (!requestedId) return;
         const incoming = payload.participant || {};
         participantId = String(incoming.id || `guest-${Math.random().toString(36).slice(2, 9)}`);
+        const requestedCreate = payload.createIfMissing === true;
+        let existing = rooms.get(requestedId);
+        if (!existing && !requestedCreate) { send(ws, 'ROOM_NOT_FOUND', { roomId: requestedId }); return; }
         const participant: Participant = { id: participantId, name: String(incoming.name || 'Listener').slice(0, 40), avatar: String(incoming.avatar || '').slice(0, 500), isHost: false, joinedAt: Date.now() };
-        room = rooms.get(requestedId) || createRoom(requestedId, participant, payload); rooms.set(requestedId, room);
+        room = existing || createRoom(requestedId, participant, payload); rooms.set(requestedId, room);
         for (const [existingWs, existingId] of room.clients.entries()) if (existingId === participant.id && existingWs !== ws) { room.clients.delete(existingWs); try { existingWs.close(); } catch {} }
         participant.isHost = room.participants.size === 0 || room.hostId === participant.id;
         if (room.participants.size === 0) room.hostId = participant.id;
@@ -46,7 +55,7 @@ wss.on('connection', (ws) => {
       }
       if (!room || !participantId) return;
       if (type === 'PLAYBACK_ACTION') {
-        if (!isHost(room, participantId)) return;
+        if (!isHost(room, participantId)) { send(ws, 'HOST_ONLY_PLAYBACK', serializeRoom(room)); return; }
         const action = payload.action;
         if (action === 'PLAY_PAUSE') { room.playbackPosition = Number.isFinite(Number(payload.position)) ? Number(payload.position) : currentPosition(room); room.isPlaying = Boolean(payload.isPlaying); }
         else if (action === 'SEEK') { room.playbackPosition = Math.max(0, Number(payload.position) || 0); }
