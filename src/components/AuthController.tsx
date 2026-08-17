@@ -16,9 +16,7 @@ export const AuthController: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    return authService.onAuthStateChange((value) => setSession(value));
-  }, []);
+  useEffect(() => authService.onAuthStateChange((value) => setSession(value)), []);
 
   useEffect(() => {
     if (!session || !cloudPersistenceService.enabled) return;
@@ -35,7 +33,7 @@ export const AuthController: React.FC = () => {
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="fixed right-4 bottom-24 md:bottom-6 z-[70] rounded-full border border-white/10 bg-zinc-900/90 backdrop-blur px-4 py-2 text-xs font-bold text-white shadow-xl hover:bg-zinc-800" title={session ? 'Account' : 'Sign in'}>
+      <button onClick={() => setOpen(true)} className="fixed right-3 top-20 md:right-5 md:top-24 z-[95] rounded-full border border-white/10 bg-zinc-900/95 backdrop-blur px-4 py-2.5 text-xs font-bold text-white shadow-xl hover:bg-zinc-800 max-w-[140px] truncate" title={session ? 'Account' : 'Sign in'}>
         {session ? (busy ? 'Syncing…' : 'Account') : 'Sign in'}
       </button>
       {open && <AuthModal onClose={() => setOpen(false)} onAuthenticated={() => setOpen(false)} />}
