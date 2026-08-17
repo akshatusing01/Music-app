@@ -29,6 +29,7 @@ class YouTubePlayerController {
   private pendingLoad: PendingLoad | null = null;
   private desiredPlaying = false;
   private syncOverlay: HTMLButtonElement | null = null;
+  private autoHost = false;
 
   constructor() {
     window.addEventListener('syncbeat:room-playback', (event) => {
@@ -58,22 +59,8 @@ class YouTubePlayerController {
     const position = this.getAuthoritativePosition(payload);
     const rate = Math.max(0.25, Math.min(2, Number(payload.playbackRate ?? 1)));
     const shouldPlay = Boolean(payload.isPlaying);
-
-    if (this.videoId !== remoteVideoId) {
-      await this.load(remoteVideoId, position, shouldPlay, rate);
-      return;
-    }
-
-    if (!this.ready) {
-      this.pendingLoad = { videoId: remoteVideoId, startSeconds: position, autoplay: shouldPlay, rate };
-      return;
-    }
-
-    this.setRate(rate);
-    const local = this.getCurrentTime();
-    if (Math.abs(local - position) > 0.35) this.seek(position);
-    if (shouldPlay && !this.isActuallyPlaying()) this.play();
-    if (!shouldPlay && this.isActuallyPlaying()) this.pause();
+    await this.load(remoteVideoId, position, shouldPlay, rate);
+    if (!shouldPlay) this.pause();
   }
 
   private loadApi(): Promise<void> {
@@ -98,9 +85,29 @@ class YouTubePlayerController {
     return this.apiPromise;
   }
 
-  async mount(host: HTMLElement) {
+  private ensureAutoHost() {
+    if (this.host || this.player) return;
+    const host = document.createElement('div');
+    host.id = 'syncbeat-session-youtube-player';
+    Object.assign(host.style, {
+      position: 'fixed', right: '12px', bottom: '86px', width: '220px', height: '200px',
+      zIndex: '45', background: '#000', border: '1px solid rgba(255,255,255,.14)',
+      borderRadius: '16px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.55)',
+    });
+    document.body.appendChild(host);
     this.host = host;
+    this.autoHost = true;
+  }
+
+  async mount(host: HTMLElement) {
     await this.loadApi();
+    if (this.player && this.host !== host) {
+      try { this.player.destroy?.(); } catch {}
+      this.player = null;
+      this.ready = false;
+    }
+    this.host = host;
+    this.autoHost = false;
     if (!this.host || !window.YT?.Player) return;
     if (!this.player) this.createPlayer(this.host);
   }
@@ -149,7 +156,7 @@ class YouTubePlayerController {
     button.textContent = '▶ Tap to sync playback';
     button.setAttribute('aria-label', 'Tap to sync playback with the host');
     Object.assign(button.style, {
-      position: 'fixed', left: '50%', bottom: '88px', transform: 'translateX(-50%)', zIndex: '9999',
+      position: 'fixed', left: '50%', bottom: '300px', transform: 'translateX(-50%)', zIndex: '9999',
       padding: '12px 18px', borderRadius: '999px', border: '1px solid rgba(244,63,94,.55)',
       background: '#181116', color: '#fff', fontSize: '13px', fontWeight: '700',
       boxShadow: '0 8px 30px rgba(0,0,0,.45)', cursor: 'pointer',
@@ -178,7 +185,8 @@ class YouTubePlayerController {
     this.videoId = videoId;
     this.desiredPlaying = autoplay;
     const request: PendingLoad = { videoId, startSeconds: Math.max(0, startSeconds), autoplay, rate: Math.max(0.25, Math.min(2, rate)) };
-    if (!this.player || !this.ready) { this.pendingLoad = request; return; }
+    if (!this.player) this.ensureAutoHost();
+    if (!this.player || !this.ready) { this.pendingLoad = request; if (this.host && !this.player) this.createPlayer(this.host); return; }
     this.applyLoad(request);
   }
 
