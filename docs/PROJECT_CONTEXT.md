@@ -103,7 +103,7 @@ Discovery should adapt to listener context:
 - New users: onboarding preferences such as artists, languages, genres, moods, and listening goals.
 - Discovery should eventually blend these signals with context such as time, mode, sessions, and lifestyle intent.
 
-## 5. Proposed Stage B — UX / Information Architecture Blueprint
+## 5. Stage B — UX / Information Architecture Blueprint — LOCKED
 
 ### 5.1 App shell
 Persistent shell should feel like one coherent music environment rather than a collection of pages.
@@ -216,7 +216,16 @@ Expanded cockpit:
 
 The cockpit should feel like the app's signature interaction, not a generic media bar.
 
-## 6. Discovery / Recommendation Architecture Direction
+## 6. Stage B Decisions — CONFIRMED
+
+1. **Home hero / personalized destination:** `For You`.
+2. **Public rooms:** appear in both Discover and Sessions, with different purposes. Discover emphasizes editorial/recommended rooms; Sessions is the complete room discovery/control center.
+3. **Accent system:** one recognizable Cineosync primary accent, with restrained contextual variations for Focus/Gym/Couple and other modes. The brand remains visually coherent.
+4. **Music Cockpit:** immersive overlay/bottom-sheet interaction rather than a separate route. Music remains present while navigation friction stays low.
+5. **Identity:** visible, editable unique username/handle for people-facing identity; immutable internal SyncBeat ID for backend identity.
+6. **Onboarding:** progressive onboarding. Users can explore immediately, then provide artists/languages/genres/moods/use cases when personalization benefits from it.
+
+## 7. Discovery / Recommendation Architecture Direction
 
 Future recommendation system should be modular and explainable.
 
@@ -237,7 +246,7 @@ Recommendation output types:
 
 Do not make recommendations feel like an opaque algorithmic feed.
 
-## 7. Design System Direction
+## 8. Design System Direction
 
 ### Color
 - Base: near-black obsidian surfaces
@@ -258,99 +267,65 @@ Do not make recommendations feel like an opaque algorithmic feed.
 - Glass primarily for high-value overlays/cockpit/session surfaces
 
 ### Motion
-- Subtle and purposeful
-- Transitions reinforce navigation, playback state, room state, and mood
-- Avoid animation for decoration alone
+- Motion should communicate hierarchy and state, not decorate every interaction.
+- Use subtle spring transitions for cockpit expansion, tab changes, room state, and content reveals.
+- Avoid excessive continuous animation that increases cognitive load or battery use.
 
-## 8. Architecture Direction Before Implementation
+## 9. Stage C — Next: Visual Design System
 
-The UI redesign should separate concerns clearly:
+**Status:** Ready to begin.
 
-### App shell state
-Navigation, modal state, viewport-specific layout, player visibility.
+Stage C will define the actual visual language before implementation:
+- Cineosync color tokens and accent behavior
+- Typography scale and font pairing
+- Iconography rules
+- Grid/spacing system
+- Radius and surface geometry
+- Glass treatment
+- Shadows/depth
+- Artwork treatment
+- Buttons/inputs/toggles
+- Track rows and playlist modules
+- Session/participant/chat components
+- Cockpit states
+- Empty/loading/error states
+- Responsive breakpoints
+- Accessibility/contrast rules
+- Motion principles
 
-### Playback domain
-Current track, queue, position, playback state, YouTube player lifecycle.
+**Implementation rule:** do not rewrite the whole app UI until Stage C is documented and approved. Build reusable primitives first, then compose screens from them.
 
-### Session domain
-Room membership, host, room state, shared queue, shared playback authority, chat/reactions.
+## 10. Implementation Milestones — PLANNED
 
-### Identity/social domain
-Auth, profile, username, SyncBeat ID, friends, friend requests, room invites.
+1. Visual foundation/tokens
+2. App shell + responsive navigation
+3. For You/Home
+4. Discover
+5. Sessions
+6. Music Cockpit
+7. Library
+8. Profile/social/auth
+9. Onboarding/personalization
+10. Polish/accessibility/performance
+11. Production QA
 
-### Discovery domain
-Search, recommendation signals, discovery feed, public rooms.
+## 11. Decision & Change Log
 
-### Library domain
-Likes, playlists, history, imports, downloads.
+- 2026-08-18: Product direction locked as Cineosync Music: creative music + lifestyle platform.
+- 2026-08-18: Primary mobile navigation locked to Home / Discover / Sessions / Library / Profile.
+- 2026-08-18: Sessions confirmed as a major first-class destination.
+- 2026-08-18: Player direction locked as signature Music Cockpit.
+- 2026-08-18: Mobile essential controls locked: Play/Pause, Forward, Like.
+- 2026-08-18: Visual direction locked: Obsidian + subtle glass + restrained accent.
+- 2026-08-18: Design language must be original rather than a Spotify/YouTube Music clone.
+- 2026-08-18: Public discovery layer confirmed.
+- 2026-08-18: Visible username/handle confirmed as first-class identity.
+- 2026-08-18: Final product name confirmed: Cineosync Music.
+- 2026-08-18: Stage B recommendations accepted: For You, public rooms in Discover + Sessions, one core accent system, immersive cockpit overlay, username + immutable SyncBeat ID, progressive onboarding.
+- 2026-08-18: Stage C opened for visual system definition before major UI implementation.
 
-### Focus/lifestyle domain
-Focus timer, stopwatch, ambient sound, mood/mode contexts.
+## 12. Verification Notes
 
-Avoid a single `App.tsx` becoming the permanent owner of every domain.
-
-## 9. Stage B Questions — Pending Product Decisions
-
-1. Home hero/first viewport name: **For You**, **Your Flow**, **Cineosync**, **Listen Now**, or another name.
-2. Public-room presentation: Discover, Sessions, or both with different presentations.
-3. Accent behavior: one global restrained accent vs context/mode-specific accent variants.
-4. Expanded cockpit presentation: full-screen route, bottom sheet, or immersive overlay.
-5. Username semantics: globally unique/editable username vs stable SyncBeat ID plus editable username.
-6. Onboarding: upfront preference setup vs progressive non-blocking setup.
-
-## 10. Decision Log
-
-### 2026-08-18 — Product redesign reset
-**Decision:** Stop treating the current UI as final. Begin a structured redesign while preserving/improving functionality.
-
-**Decision:** Maintain a living project-context file in the repository so important product/architecture decisions remain available across future conversations.
-
-**Decision:** Redesign will happen through discovery → UX architecture → visual system → technical architecture → implementation → verification.
-
-### 2026-08-18 — Stage A product direction locked
-**Decision:** Product positioning is **music + lifestyle**, with a creative and unique identity.
-
-**Decision:** Personalized discovery should adapt to user history and, for new users, explicit preferences such as artists, languages and genres.
-
-**Decision:** Primary navigation is **Home / Discover / Sessions / Library / Profile**.
-
-**Decision:** Sessions is a **major destination** rather than a secondary feature.
-
-**Decision:** The player should become a **music cockpit**.
-
-**Decision:** On mobile, Play/Pause, Forward and Like are the three always-reachable controls.
-
-**Decision:** Visual system direction is **Obsidian + subtle glass + restrained accent color**.
-
-**Decision:** The design language should be distinct and not a visual copy of mainstream platforms.
-
-**Decision:** Cineosync Music includes a **public discovery layer** in addition to private/friends-first experiences.
-
-**Decision:** Usernames/handles are visible first-class identity throughout the app.
-
-**Decision:** Product name is **Cineosync Music**.
-
-**Decision:** Stage A is substantially complete. Proceed to Stage B information architecture refinement, then Stage C visual system, then technical architecture and implementation.
-
-## 11. Future Decision Template
-
-### [DATE] — [Decision title]
-**Context:**
-
-**Decision:**
-
-**Why:**
-
-**Alternatives considered:**
-
-**Impact on architecture/UI:**
-
-**Implementation milestone:**
-
-**Commit:**
-
-**Deployment:**
-
-**Verification:**
-
-**Known follow-ups:**
+- This document is intentionally kept in-repo so future sessions can recover product decisions without relying on conversation context.
+- Feature verification must distinguish between code/build verification and real multi-device/browser verification.
+- Never claim realtime/mobile/autoplay behavior is fully verified unless it has actually been tested in the relevant environment.
