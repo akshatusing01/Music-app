@@ -50,7 +50,28 @@ wss.on('connection', (ws) => {
         } else if (action === 'CHANGE_SONG') {
           if (!payload.songId) return;
           room.currentSongId = String(payload.songId);
-          room.currentSong = payload.song && typeof payload.song === 'object' ? payload.song : room.currentSong;
+          if (payload.song && typeof payload.song === 'object') {
+            room.currentSong = payload.song;
+          } else if (room.currentSong?.youtubeVideoId && room.currentSongId === room.currentSong.id) {
+            // Keep the previously received full metadata when the same track is replayed.
+          } else if (room.currentSongId.startsWith('yt-search-')) {
+            const videoId = room.currentSongId.slice('yt-search-'.length);
+            room.currentSong = {
+              id: room.currentSongId,
+              title: 'YouTube track',
+              artist: 'YouTube',
+              album: 'YouTube',
+              duration: 0,
+              coverArt: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              language: 'en',
+              languageLabel: 'English / International',
+              mood: 'chill',
+              tags: ['youtube', 'session'],
+              youtubeVideoId: videoId,
+              lyrics: [],
+              sourceProvider: 'YouTube',
+            };
+          }
           room.playbackPosition = Math.max(0, Number(payload.position) || 0);
           room.isPlaying = payload.isPlaying !== false;
           if (!room.queue.includes(room.currentSongId)) room.queue = [room.currentSongId, ...room.queue];
