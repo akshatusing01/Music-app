@@ -10,28 +10,30 @@ export class WebSocketClient {
   private static instance: WebSocketClient;
   private ws: WebSocket | null = null; private listeners = new Set<WebSocketEventListener>(); private reconnectTimeout: number | null = null;
   private currentRoomId: string | null = null; private currentParticipant: { id: string; name: string; avatar: string } | null = null;
-  private currentRoomOptions: { roomName?: string; moodTheme?: string; initialSongId?: string; initialSong?: Song; isPublic?: boolean } | undefined;
+  private currentRoomOptions: { roomName?: string; moodTheme?: string; initialSongId?: string; initialSong?: Song; isPublic?: boolean; createIfMissing?: boolean } | undefined;
   private roomQueue: string[] = []; private roomState: Partial<RoomState> | null = null; private isExplicitlyClosed = false;
   private latencyMs = 0; private pingInterval: number | null = null; private reconnectAttempts = 0;
   private constructor() {}
   public static getInstance(): WebSocketClient { if (!WebSocketClient.instance) WebSocketClient.instance = new WebSocketClient(); return WebSocketClient.instance; }
 
-  public connect(roomId: string, participant: { id: string; name: string; avatar: string }, options?: { roomName?: string; moodTheme?: string; initialSongId?: string; initialSong?: Song; isPublic?: boolean }) {
+  private wsUrl() { const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'; const configured = String(import.meta.env.VITE_SYNC_WS_URL || '').trim(); return configured || `${protocol}//${window.location.host}${import.meta.env.PROD ? '/api/ws' : '/ws'}`; }
+
+  public connect(roomId: string, participant: { id: string; name: string; avatar: string }, options?: { roomName?: string; moodTheme?: string; initialSongId?: string; initialSong?: Song; isPublic?: boolean; createIfMissing?: boolean }) {
     this.currentRoomId = roomId; this.currentParticipant = participant; this.currentRoomOptions = options; this.isExplicitlyClosed = false;
     if (this.ws) { try { this.ws.close(); } catch {} }
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'; const configured = String(import.meta.env.VITE_SYNC_WS_URL || '').trim();
-    const wsUrl = configured || `${protocol}//${window.location.host}${import.meta.env.PROD ? '/api/ws' : '/ws'}`;
     try {
-      this.ws = new WebSocket(wsUrl);
+      this.ws = new WebSocket(this.wsUrl());
       this.ws.onopen = () => { this.reconnectAttempts = 0; this.send('JOIN_ROOM', { roomId, payload: { participant, ...options } }); this.startPing(); this.emitStatus('SESSION_CONNECTED'); };
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'PONG') { this.latencyMs = Math.max(1, Date.now() - Number(data.payload?.timestamp || Date.now())); return; }
+          if (data.type === 'ROOM_NOT_FOUND') { this.listeners.forEach((listener) => listener(data)); this.disconnect(); return; }
+          if (data.type === 'ROOM_LOOKUP_RESULT') { this.listeners.forEach((listener) => listener(data)); return; }
           if (data.type === 'ROOM_SYNC_STATE' && data.payload) {
             this.roomState = data.payload as Partial<RoomState>; this.roomQueue = [...(data.payload.queue || [])]; this.listeners.forEach((listener) => listener(data));
             const state = data.payload;
-            if (state.currentSong) void this.applyRemotePlayback(state.currentSong as Song, Boolean(state.isPlaying), Number(state.playbackPosition || 0), Number(state.playbackRate || 1), 'INITIAL_SYNC');
+            if (state.currentSong) void this.applyRemotePlayback(state.currentSong as Song, Boolean(state.isPlaying), Number(state.playbackPosition || 0), Number(state.playbackRate || 1), 'INITIAL_SYNC', Number(state.lastStateUpdate || Date.now()));
             else if (state.isPlaying === false) { audioEngine.pause(); youtubePlayer.pause(); }
             window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { songId: state.currentSongId, song: state.currentSong || null, isPlaying: Boolean(state.isPlaying), position: Number(state.playbackPosition || 0), playbackPosition: Number(state.playbackPosition || 0), playbackRate: Number(state.playbackRate || 1), lastStateUpdate: state.lastStateUpdate } })); return;
           }
@@ -40,7 +42,7 @@ export class WebSocketClient {
             const songId = data.payload.songId || data.payload.currentSongId || null; const position = Number(data.payload.position ?? data.payload.playbackPosition ?? 0); const song = (data.payload.song as Song | null) || (songId ? getStoredSong(songId) : null);
             this.roomState = { ...(this.roomState || {}), currentSongId: songId, currentSong: song || this.roomState?.currentSong || null, isPlaying: Boolean(data.payload.isPlaying), playbackPosition: position, playbackRate: Number(data.payload.playbackRate ?? 1), lastStateUpdate: data.payload.lastStateUpdate ?? Date.now() };
             const isRemote = data.payload.actionBy && data.payload.actionBy !== this.currentParticipant?.id;
-            if (isRemote) void this.applyRemotePlayback(song || this.roomState.currentSong as Song | null, Boolean(data.payload.isPlaying), position, Number(data.payload.playbackRate ?? 1), data.payload.action || 'PLAY_PAUSE');
+            if (isRemote) void this.applyRemotePlayback(song || (this.roomState.currentSong as Song | null), Boolean(data.payload.isPlaying), position, Number(data.payload.playbackRate ?? 1), data.payload.action || 'PLAY_PAUSE', Number(data.payload.lastStateUpdate || Date.now()));
             window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { ...data.payload, songId, song: song || this.roomState.currentSong || null, position, playbackPosition: position } }));
             this.listeners.forEach((listener) => listener(data)); this.listeners.forEach((listener) => listener({ type: 'ROOM_SYNC_STATE', payload: this.roomState })); return;
           }
@@ -57,36 +59,32 @@ export class WebSocketClient {
     } catch { this.emitStatus('SESSION_ERROR'); }
   }
 
-  private async applyRemotePlayback(song: Song | null, playing: boolean, position: number, rate: number, action: string) {
+  private async applyRemotePlayback(song: Song | null, playing: boolean, position: number, rate: number, action: string, lastStateUpdate = Date.now()) {
     try {
       if (!song) return;
+      const authoritativePosition = playing ? Math.max(0, position + Math.max(0, (Date.now() - lastStateUpdate) / 1000) * rate) : Math.max(0, position);
       if (song.youtubeVideoId) {
-        if (action === 'CHANGE_SONG' || action === 'INITIAL_SYNC') {
-          await youtubePlayer.load(song.youtubeVideoId, Math.max(0, position), playing, rate);
-          if (!playing) youtubePlayer.pause();
-          return;
-        }
-        if (action === 'SEEK') {
-          youtubePlayer.setRate(rate);
-          youtubePlayer.seek(position);
-          if (playing) youtubePlayer.play(); else youtubePlayer.pause();
-          return;
-        }
+        if (action === 'CHANGE_SONG' || action === 'INITIAL_SYNC') { await youtubePlayer.load(song.youtubeVideoId, authoritativePosition, playing, rate); if (!playing) youtubePlayer.pause(); return; }
+        if (action === 'SEEK') { youtubePlayer.setRate(rate); youtubePlayer.seek(authoritativePosition); if (playing) youtubePlayer.play(); else youtubePlayer.pause(); return; }
         if (action === 'SET_RATE') { youtubePlayer.setRate(rate); return; }
         youtubePlayer.setRate(rate);
-        if (Math.abs(youtubePlayer.getCurrentTime() - position) > 0.35) youtubePlayer.seek(position);
+        if (Math.abs(youtubePlayer.getCurrentTime() - authoritativePosition) > 0.35) youtubePlayer.seek(authoritativePosition);
         if (playing) youtubePlayer.play(); else youtubePlayer.pause();
         return;
       }
-      if (action === 'CHANGE_SONG' || action === 'INITIAL_SYNC') {
-        await audioEngine.playSong(song, Math.max(0, position), rate);
-        if (!playing) audioEngine.pause();
-        return;
-      }
-      if (action === 'SEEK') { audioEngine.setPlaybackRate(rate); audioEngine.seek(position); if (playing) audioEngine.resume(); else audioEngine.pause(); return; }
+      if (action === 'CHANGE_SONG' || action === 'INITIAL_SYNC') { await audioEngine.playSong(song, authoritativePosition, rate); if (!playing) audioEngine.pause(); return; }
+      if (action === 'SEEK') { audioEngine.setPlaybackRate(rate); audioEngine.seek(authoritativePosition); if (playing) audioEngine.resume(); else audioEngine.pause(); return; }
       if (action === 'SET_RATE') { audioEngine.setPlaybackRate(rate); return; }
-      if (playing) { audioEngine.setPlaybackRate(rate); audioEngine.seek(position); audioEngine.resume(); } else { audioEngine.seek(position); audioEngine.pause(); }
+      if (playing) { audioEngine.setPlaybackRate(rate); audioEngine.seek(authoritativePosition); audioEngine.resume(); } else { audioEngine.seek(authoritativePosition); audioEngine.pause(); }
     } catch (error) { console.warn('Remote playback sync failed:', error); }
+  }
+
+  public async resyncFromHost() {
+    const state = this.roomState;
+    const song = (state?.currentSong as Song | null) || (state?.currentSongId ? getStoredSong(state.currentSongId) : null);
+    if (!song) return;
+    await this.applyRemotePlayback(song, Boolean(state?.isPlaying), Number(state?.playbackPosition || 0), Number(state?.playbackRate || 1), 'RESYNC', Number(state?.lastStateUpdate || Date.now()));
+    window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { song, songId: state?.currentSongId, isPlaying: Boolean(state?.isPlaying), position: Number(state?.playbackPosition || 0), playbackPosition: Number(state?.playbackPosition || 0), playbackRate: Number(state?.playbackRate || 1), lastStateUpdate: state?.lastStateUpdate } }));
   }
 
   private emitStatus(type: string) { this.listeners.forEach((listener) => listener({ type, payload: { roomId: this.currentRoomId } })); }
@@ -112,8 +110,21 @@ export class WebSocketClient {
   public burstReaction(emoji: string, soundEffect?: string) { if (!this.currentParticipant) return; this.send('BURST_REACTION', { emoji, senderId: this.currentParticipant.id, senderName: this.currentParticipant.name, x: 0.2 + Math.random() * 0.6, soundEffect }); }
   public syncFocusTimer(action: 'SET_TIMER' | 'TOGGLE_TIMER' | 'RESET_TIMER', payload: { timerType?: 'pomodoro' | 'stopwatch' | 'idle'; duration?: number; remaining?: number; isRunning?: boolean }) { this.send('FOCUS_TIMER_ACTION', { action, ...payload }); }
   public getLatency(): number { return this.latencyMs || 24; }
-  public createRoom(roomName: string, hostName: string, moodTheme = 'love', isPrivate = false) { const profile = getLocalProfile(); const participant = { id: profile?.id || `host-${Math.random().toString(36).substring(2, 6)}`, name: profile?.name || hostName, avatar: profile?.avatar || '' }; this.connect('room-' + Math.random().toString(36).substring(2, 8), participant, { roomName, moodTheme, isPublic: !isPrivate }); }
-  public joinRoom(roomId: string, name: string, avatar: string) { const profile = getLocalProfile(); let cleanId = roomId.trim(); try { const url = new URL(cleanId, window.location.origin); cleanId = url.searchParams.get('room') || cleanId; } catch {} const participant = { id: profile?.id || `guest-${Math.random().toString(36).substring(2, 6)}`, name: profile?.name || name, avatar: profile?.avatar || avatar }; this.connect(cleanId, participant); }
+  public createRoom(roomName: string, hostName: string, moodTheme = 'love', isPrivate = false) { const profile = getLocalProfile(); const participant = { id: profile?.id || `host-${Math.random().toString(36).substring(2, 6)}`, name: profile?.name || hostName, avatar: profile?.avatar || '' }; const roomId = 'room-' + Math.random().toString(36).substring(2, 8); this.connect(roomId, participant, { roomName, moodTheme, isPublic: !isPrivate, createIfMissing: true }); return roomId; }
+  public joinRoom(roomId: string, name: string, avatar: string) { const profile = getLocalProfile(); let cleanId = roomId.trim(); try { const url = new URL(cleanId, window.location.origin); cleanId = url.searchParams.get('room') || cleanId; } catch {} const participant = { id: profile?.id || `guest-${Math.random().toString(36).substring(2, 6)}`, name: profile?.name || name, avatar: profile?.avatar || avatar }; this.connect(cleanId, participant, { createIfMissing: false }); }
+  public async resolveRoomByName(roomName: string): Promise<string | null> {
+    const name = roomName.trim(); if (!name) return null;
+    return new Promise((resolve) => {
+      const socket = new WebSocket(this.wsUrl()); let settled = false;
+      const finish = (value: string | null) => { if (settled) return; settled = true; try { socket.close(); } catch {} resolve(value); };
+      const timeout = window.setTimeout(() => finish(null), 6500);
+      socket.onopen = () => socket.send(JSON.stringify({ type: 'FIND_ROOM', payload: { roomName: name } }));
+      socket.onmessage = (event) => { try { const data = JSON.parse(event.data); if (data.type === 'ROOM_LOOKUP_RESULT') { window.clearTimeout(timeout); finish(data.payload?.roomId || null); } } catch { window.clearTimeout(timeout); finish(null); } };
+      socket.onerror = () => { window.clearTimeout(timeout); finish(null); };
+      socket.onclose = () => { if (!settled) { window.clearTimeout(timeout); finish(null); } };
+    });
+  }
+  public async joinRoomByName(roomName: string, name: string, avatar: string) { const roomId = await this.resolveRoomByName(roomName); if (!roomId) { this.listeners.forEach((listener) => listener({ type: 'ROOM_NOT_FOUND', payload: { roomName } })); return false; } this.joinRoom(roomId, name, avatar); return true; }
   public leaveRoom() { this.disconnect(); }
   private startPing() { this.stopPing(); this.pingInterval = window.setInterval(() => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'PING', roomId: this.currentRoomId, payload: { timestamp: Date.now() } })); }, 10000); }
   private stopPing() { if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; } }
