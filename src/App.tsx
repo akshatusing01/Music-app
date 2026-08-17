@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  MainNavTab, ExperienceMode, SupportedLanguage, AppTheme, Song, Playlist,
-  RoomState, AudioQuality, FocusTimerState, AmbientSounds, ChatMessage, UserProfile,
-} from './types';
+import { MainNavTab, ExperienceMode, SupportedLanguage, AppTheme, Song, Playlist, RoomState, FocusTimerState, AmbientSounds, UserProfile } from './types';
 import { initialSongs, defaultPlaylists } from './data/songs';
 import { translations } from './data/translations';
 import { audioEngine } from './services/audioEngine';
@@ -66,7 +63,7 @@ export function App() {
       if (Array.isArray(data.likedIds)) setLikedSongIds(new Set(data.likedIds));
       if (Array.isArray(data.playlists) && data.playlists.length) setPlaylists(data.playlists);
       if (data.profile) {
-        setUserProfile((prev) => ({ ...prev, ...prev, name: data.profile.display_name ?? prev.name, avatar: data.profile.avatar_url ?? prev.avatar, statusMessage: data.profile.status_message ?? prev.statusMessage, presenceMode: data.profile.presence_mode ?? prev.presenceMode, language: data.profile.language ?? prev.language, theme: data.profile.theme ?? prev.theme, quality: data.profile.audio_quality ?? prev.quality, favoriteGenres: data.profile.favorite_genres ?? prev.favoriteGenres }));
+        setUserProfile((prev) => ({ ...prev, name: data.profile.display_name ?? prev.name, avatar: data.profile.avatar_url ?? prev.avatar, statusMessage: data.profile.status_message ?? prev.statusMessage, presenceMode: data.profile.presence_mode ?? prev.presenceMode, language: data.profile.language ?? prev.language, theme: data.profile.theme ?? prev.theme, quality: data.profile.audio_quality ?? prev.quality, favoriteGenres: data.profile.favorite_genres ?? prev.favoriteGenres }));
         if (data.profile.language) setLanguage(data.profile.language);
         if (data.profile.theme) setTheme(data.profile.theme);
       }
@@ -86,7 +83,7 @@ export function App() {
   useEffect(() => { const i = window.setInterval(() => setLatencyMs(wsClient.getLatency()), 4000); return () => clearInterval(i); }, []);
 
   const handlePlaySong = useCallback((song: Song) => {
-    setCurrentSong(song); setPlaybackPosition(0); audioEngine.playSong(song, 0); setIsPlaying(true);
+    setCurrentSong(song); setPlaybackPosition(0); void audioEngine.playSong(song, 0); setIsPlaying(true);
     const source = activeRoom ? 'session' : 'app';
     persistenceService.addHistory({ song, playedAt: Date.now(), source });
     cloudPersistenceService.recordHistory(song, source).catch(() => undefined);
@@ -104,8 +101,6 @@ export function App() {
   const handleCreateRoom = (name: string, mood: string, isPrivate = false) => { wsClient.createRoom(name, userProfile.name, mood, isPrivate); setCurrentTab('sessions'); };
   const handleJoinRoom = (roomId: string) => { wsClient.joinRoom(roomId, userProfile.name, userProfile.avatar); setCurrentTab('sessions'); };
   const handleLeaveRoom = () => { wsClient.leaveRoom(); setActiveRoom(null); };
-  const handleSendChatMessage = (text: string, _type: 'text' | 'reaction' | 'moment' | 'sound' = 'text', _emoji?: string, soundName?: string) => { if (activeRoom) { wsClient.sendChatMessage(text); if (soundName) audioEngine.playReactionSound(soundName); } };
-  const handleTriggerFloatingReaction = (emoji: string) => { if (activeRoom) wsClient.burstReaction(emoji); };
   const handleSelectPlaylist = (playlist: Playlist) => { const plSongs = songs.filter((s) => playlist.songIds.includes(s.id)); if (plSongs.length) { setQueue(plSongs); handlePlaySong(plSongs[0]); } };
   const handleImportPlaylist = (newPl: Playlist, newSongs?: Song[]) => { if (newSongs?.length) setSongs((prev) => [...newSongs.filter((s) => !prev.some((x) => x.id === s.id)), ...prev]); setPlaylists((prev) => [newPl, ...prev]); cloudPersistenceService.savePlaylist(newPl, [...songs, ...(newSongs ?? [])]).catch(() => undefined); };
   const handleExperienceChange = (mode: ExperienceMode) => { setExperienceMode(mode); const nextTheme: AppTheme = mode === 'love' ? 'bollywood-ruby' : mode === 'focus' ? 'focus-emerald' : mode === 'gym' ? 'sapphire-gym' : 'neon-obsidian'; setTheme(nextTheme); };
@@ -114,9 +109,9 @@ export function App() {
   const commonProps = useMemo(() => ({ currentSong, isPlaying, playbackPosition, queue, onPlaySong: handlePlaySong, onTogglePlay: handleTogglePlay, onNext: handleNextTrack, onPrev: handlePrevTrack, onSeek: handleSeek, onAddToQueue: handleAddToQueue, onRemoveFromQueue: handleRemoveFromQueue }), [currentSong, isPlaying, playbackPosition, queue, handlePlaySong, handleTogglePlay, handleNextTrack, handlePrevTrack]);
 
   return <div className="min-h-screen bg-zinc-950 text-white"><Navbar currentTab={currentTab} onTabChange={setCurrentTab} searchQuery={searchQuery} onSearchChange={setSearchQuery} userProfile={userProfile} /><Sidebar currentTab={currentTab} onTabChange={setCurrentTab} /><main className="min-h-screen px-4 pb-32 pt-20 lg:pl-64 lg:pr-80">
-    {currentTab === 'home' && <HomeView {...commonProps} songs={songs} onSelectExperience={handleExperienceChange} experienceMode={experienceMode} onOpenAiGenerator={() => setIsAiGeneratorOpen(true)} />}
-    {currentTab === 'search' && <SearchView {...commonProps} songs={songs} searchQuery={searchQuery} onSearchChange={setSearchQuery} onToggleLike={handleToggleLike} likedSongIds={likedSongIds} />}
-    {currentTab === 'sessions' && <SessionsView activeRoom={activeRoom} userProfile={userProfile} latencyMs={latencyMs} onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} onLeaveRoom={handleLeaveRoom} onPlaySong={handlePlaySong} onTogglePlay={handleTogglePlay} onSeek={handleSeek} onSendChatMessage={handleSendChatMessage} onTriggerReaction={handleTriggerFloatingReaction} />}
+    {currentTab === 'home' && <HomeView songs={songs} playlists={playlists} currentSong={currentSong} isPlaying={isPlaying} onPlaySong={handlePlaySong} onTogglePlay={handleTogglePlay} onAddToQueue={handleAddToQueue} likedSongIds={likedSongIds} onToggleLike={handleToggleLike} downloadedSongIds={downloadedSongIds} onToggleDownload={handleToggleDownload} onJoinRoom={handleJoinRoom} onOpenAiGenerator={() => setIsAiGeneratorOpen(true)} onSelectPlaylist={handleSelectPlaylist} onSelectExperience={handleExperienceChange} onNavigateTab={setCurrentTab} language={language} experienceMode={experienceMode} />}
+    {currentTab === 'search' && <SearchView songs={songs} playlists={playlists} currentSong={currentSong} isPlaying={isPlaying} searchQuery={searchQuery} onSearchChange={setSearchQuery} onPlaySong={handlePlaySong} onAddToQueue={handleAddToQueue} likedSongIds={likedSongIds} onToggleLike={handleToggleLike} downloadedSongIds={downloadedSongIds} onToggleDownload={handleToggleDownload} onSelectPlaylist={handleSelectPlaylist} onJoinRoom={handleJoinRoom} language={language} />}
+    {currentTab === 'sessions' && <SessionsView room={activeRoom} currentSong={currentSong} isPlaying={isPlaying} onTogglePlay={handleTogglePlay} onNextTrack={handleNextTrack} onSelectSong={handlePlaySong} availableSongs={songs} currentUser={{ id: userProfile.id, name: userProfile.name, avatar: userProfile.avatar }} onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} onLeaveRoom={handleLeaveRoom} onOpenLyrics={() => setCurrentTab('lyrics')} language={language} latencyMs={latencyMs} />}
     {currentTab === 'focus' && <FocusView timerState={timerState} onToggleTimer={handleToggleTimer} onResetTimer={handleResetTimer} stopwatchSeconds={stopwatchSeconds} isStopwatchRunning={isStopwatchRunning} onToggleStopwatch={() => setIsStopwatchRunning((p) => !p)} ambientSounds={ambientSounds} onAmbientSoundsChange={setAmbientSounds} />}
     {currentTab === 'library' && <LibraryView allSongs={songs} downloadedSongIds={downloadedSongIds} likedSongIds={likedSongIds} customPlaylists={playlists} currentSong={currentSong} isPlaying={isPlaying} onPlaySong={handlePlaySong} onTogglePlay={handleTogglePlay} onToggleDownload={handleToggleDownload} onToggleLike={handleToggleLike} isOfflineMode={isOfflineMode} onToggleOfflineMode={() => setIsOfflineMode((p) => !p)} onClearOfflineCache={() => setDownloadedSongIds(new Set())} onSelectPlaylist={handleSelectPlaylist} onOpenImporter={() => setCurrentTab('importer')} language={language} />}
     {currentTab === 'profile' && <ProfileView userProfile={userProfile} onUpdateProfile={setUserProfile} language={language} onLanguageChange={(l) => { setLanguage(l); setUserProfile((p) => ({ ...p, language: l })); }} theme={theme} onThemeChange={(v) => { setTheme(v); setUserProfile((p) => ({ ...p, theme: v })); }} />}
