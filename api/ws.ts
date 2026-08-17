@@ -5,16 +5,16 @@ type Participant = { id: string; name: string; avatar: string; isHost: boolean; 
 type FocusMode = { active: boolean; timerType: 'pomodoro' | 'stopwatch' | 'idle'; duration: number; remaining: number; isRunning: boolean; startedAt: number | null };
 type Room = {
   roomId: string; roomName: string; moodTheme: string; hostId: string; isPublic: boolean;
-  currentSongId: string | null; isPlaying: boolean; playbackPosition: number; playbackRate: number; lastStateUpdate: number;
+  currentSongId: string | null; currentSong: any | null; isPlaying: boolean; playbackPosition: number; playbackRate: number; lastStateUpdate: number;
   queue: string[]; participants: Map<string, Participant>; clients: Map<WebSocket, string>; chatMessages: any[]; focusMode: FocusMode;
 };
 
 const rooms = new Map<string, Room>();
 function createRoom(roomId: string, participant: Participant, options: any = {}): Room {
-  return { roomId, roomName: String(options.roomName || `Sync Room ${roomId}`).slice(0, 80), moodTheme: String(options.moodTheme || 'vibe').slice(0, 30), hostId: participant.id, isPublic: options.isPublic !== false, currentSongId: typeof options.initialSongId === 'string' ? options.initialSongId : null, isPlaying: false, playbackPosition: 0, playbackRate: 1, lastStateUpdate: Date.now(), queue: options.initialSongId ? [options.initialSongId] : [], participants: new Map(), clients: new Map(), chatMessages: [], focusMode: { active: false, timerType: 'idle', duration: 1500, remaining: 1500, isRunning: false, startedAt: null } };
+  return { roomId, roomName: String(options.roomName || `Sync Room ${roomId}`).slice(0, 80), moodTheme: String(options.moodTheme || 'vibe').slice(0, 30), hostId: participant.id, isPublic: options.isPublic !== false, currentSongId: typeof options.initialSongId === 'string' ? options.initialSongId : null, currentSong: options.initialSong && typeof options.initialSong === 'object' ? options.initialSong : null, isPlaying: false, playbackPosition: 0, playbackRate: 1, lastStateUpdate: Date.now(), queue: options.initialSongId ? [options.initialSongId] : [], participants: new Map(), clients: new Map(), chatMessages: [], focusMode: { active: false, timerType: 'idle', duration: 1500, remaining: 1500, isRunning: false, startedAt: null } };
 }
 function currentPosition(room: Room) { return room.isPlaying ? Math.max(0, room.playbackPosition + ((Date.now() - room.lastStateUpdate) / 1000) * room.playbackRate) : room.playbackPosition; }
-function serializeRoom(room: Room) { return { roomId: room.roomId, roomName: room.roomName, moodTheme: room.moodTheme, hostId: room.hostId, currentSongId: room.currentSongId, isPlaying: room.isPlaying, playbackPosition: currentPosition(room), playbackRate: room.playbackRate, lastStateUpdate: room.lastStateUpdate, queue: room.queue, participants: [...room.participants.values()], chatMessages: room.chatMessages.slice(-50), focusMode: room.focusMode, isPublic: room.isPublic }; }
+function serializeRoom(room: Room) { return { roomId: room.roomId, roomName: room.roomName, moodTheme: room.moodTheme, hostId: room.hostId, currentSongId: room.currentSongId, currentSong: room.currentSong, isPlaying: room.isPlaying, playbackPosition: currentPosition(room), playbackRate: room.playbackRate, lastStateUpdate: room.lastStateUpdate, queue: room.queue, participants: [...room.participants.values()], chatMessages: room.chatMessages.slice(-50), focusMode: room.focusMode, isPublic: room.isPublic }; }
 function send(ws: WebSocket, type: string, payload: unknown) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, payload })); }
 function broadcast(room: Room, type: string, payload: unknown, except?: WebSocket) { for (const ws of room.clients.keys()) if (ws !== except) send(ws, type, payload); }
 
@@ -41,13 +41,23 @@ wss.on('connection', (ws) => {
       if (!room || !participantId) return;
       if (type === 'PLAYBACK_ACTION') {
         const action = payload.action;
-        if (action === 'PLAY_PAUSE') { room.playbackPosition = Number(payload.position) >= 0 ? Number(payload.position) : currentPosition(room); room.isPlaying = Boolean(payload.isPlaying); }
-        else if (action === 'SEEK') room.playbackPosition = Math.max(0, Number(payload.position) || 0);
-        else if (action === 'CHANGE_SONG') { if (!payload.songId) return; room.currentSongId = String(payload.songId); room.playbackPosition = Math.max(0, Number(payload.position) || 0); room.isPlaying = payload.isPlaying !== false; if (!room.queue.includes(room.currentSongId)) room.queue = [room.currentSongId, ...room.queue]; }
-        else if (action === 'SET_RATE') room.playbackRate = Math.max(0.25, Math.min(2, Number(payload.playbackRate) || 1));
+        if (action === 'PLAY_PAUSE') {
+          room.playbackPosition = Number(payload.position) >= 0 ? Number(payload.position) : currentPosition(room);
+          room.isPlaying = Boolean(payload.isPlaying);
+        } else if (action === 'SEEK') {
+          room.playbackPosition = Math.max(0, Number(payload.position) || 0);
+          room.isPlaying = payload.isPlaying !== false;
+        } else if (action === 'CHANGE_SONG') {
+          if (!payload.songId) return;
+          room.currentSongId = String(payload.songId);
+          room.currentSong = payload.song && typeof payload.song === 'object' ? payload.song : room.currentSong;
+          room.playbackPosition = Math.max(0, Number(payload.position) || 0);
+          room.isPlaying = payload.isPlaying !== false;
+          if (!room.queue.includes(room.currentSongId)) room.queue = [room.currentSongId, ...room.queue];
+        } else if (action === 'SET_RATE') room.playbackRate = Math.max(0.25, Math.min(2, Number(payload.playbackRate) || 1));
         else return;
         room.lastStateUpdate = Date.now();
-        broadcast(room, 'PLAYBACK_SYNC', { currentSongId: room.currentSongId, songId: room.currentSongId, isPlaying: room.isPlaying, playbackPosition: room.playbackPosition, position: room.playbackPosition, playbackRate: room.playbackRate, lastStateUpdate: room.lastStateUpdate, actionBy: participantId }); return;
+        broadcast(room, 'PLAYBACK_SYNC', { currentSongId: room.currentSongId, songId: room.currentSongId, song: room.currentSong, isPlaying: room.isPlaying, playbackPosition: room.playbackPosition, position: room.playbackPosition, playbackRate: room.playbackRate, lastStateUpdate: room.lastStateUpdate, action, actionBy: participantId }); return;
       }
       if (type === 'QUEUE_UPDATE') {
         const rawQueue: unknown[] = Array.isArray(payload.queue) ? payload.queue : [];
