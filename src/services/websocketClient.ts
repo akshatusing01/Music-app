@@ -1,6 +1,10 @@
-import type { RoomState, Song } from '../types';
+import type { RoomState, Song, UserProfile } from '../types';
 
 export type WebSocketEventListener = (event: { type: string; payload: any }) => void;
+
+function getLocalProfile(): UserProfile | null {
+  try { return JSON.parse(localStorage.getItem('syncbeat:v2:profile') || 'null') as UserProfile | null; } catch { return null; }
+}
 
 export class WebSocketClient {
   private static instance: WebSocketClient;
@@ -21,68 +25,37 @@ export class WebSocketClient {
   public static getInstance(): WebSocketClient { if (!WebSocketClient.instance) WebSocketClient.instance = new WebSocketClient(); return WebSocketClient.instance; }
 
   public connect(roomId: string, participant: { id: string; name: string; avatar: string }, options?: { roomName?: string; moodTheme?: string; initialSongId?: string; initialSong?: Song; isPublic?: boolean }) {
-    this.currentRoomId = roomId;
-    this.currentParticipant = participant;
-    this.currentRoomOptions = options;
-    this.isExplicitlyClosed = false;
+    this.currentRoomId = roomId; this.currentParticipant = participant; this.currentRoomOptions = options; this.isExplicitlyClosed = false;
     if (this.ws) { try { this.ws.close(); } catch {} }
-
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const configured = String(import.meta.env.VITE_SYNC_WS_URL || '').trim();
     const wsUrl = configured || `${protocol}//${window.location.host}${import.meta.env.PROD ? '/api/ws' : '/ws'}`;
-
     try {
       this.ws = new WebSocket(wsUrl);
-      this.ws.onopen = () => {
-        this.reconnectAttempts = 0;
-        this.send('JOIN_ROOM', { roomId, payload: { participant, ...options } });
-        this.startPing();
-        this.emitStatus('SESSION_CONNECTED');
-      };
+      this.ws.onopen = () => { this.reconnectAttempts = 0; this.send('JOIN_ROOM', { roomId, payload: { participant, ...options } }); this.startPing(); this.emitStatus('SESSION_CONNECTED'); };
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'PONG') { this.latencyMs = Math.max(1, Date.now() - Number(data.payload?.timestamp || Date.now())); return; }
           if (data.type === 'ROOM_SYNC_STATE' && data.payload) {
-            this.roomState = data.payload as Partial<RoomState>;
-            this.roomQueue = [...(data.payload.queue || [])];
-            if (data.payload.currentSongId) {
-              window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: {
-                songId: data.payload.currentSongId,
-                song: data.payload.currentSong || null,
-                isPlaying: Boolean(data.payload.isPlaying),
-                position: Number(data.payload.playbackPosition || 0),
-                playbackPosition: Number(data.payload.playbackPosition || 0),
-                playbackRate: Number(data.payload.playbackRate || 1),
-                lastStateUpdate: data.payload.lastStateUpdate,
-              }}));
-            }
+            this.roomState = data.payload as Partial<RoomState>; this.roomQueue = [...(data.payload.queue || [])];
+            if (data.payload.currentSongId) window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { songId: data.payload.currentSongId, song: data.payload.currentSong || null, isPlaying: Boolean(data.payload.isPlaying), position: Number(data.payload.playbackPosition || 0), playbackPosition: Number(data.payload.playbackPosition || 0), playbackRate: Number(data.payload.playbackRate || 1), lastStateUpdate: data.payload.lastStateUpdate } }));
           }
           if (data.type === 'QUEUE_SYNC' && data.payload?.queue) { this.roomQueue = [...data.payload.queue]; this.roomState = { ...(this.roomState || {}), queue: this.roomQueue }; }
           if (data.type === 'PLAYBACK_SYNC' && data.payload) {
-            const songId = data.payload.songId || data.payload.currentSongId || null;
-            const position = data.payload.position ?? data.payload.playbackPosition ?? 0;
+            const songId = data.payload.songId || data.payload.currentSongId || null; const position = data.payload.position ?? data.payload.playbackPosition ?? 0;
             this.roomState = { ...(this.roomState || {}), currentSongId: songId, currentSong: data.payload.song || null, isPlaying: Boolean(data.payload.isPlaying), playbackPosition: Number(position), playbackRate: Number(data.payload.playbackRate ?? 1), lastStateUpdate: data.payload.lastStateUpdate ?? Date.now() };
             window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: { ...data.payload, songId, position, playbackPosition: position } }));
           }
-          if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, chatMessages: data.payload.systemMessage ? [...(this.roomState?.chatMessages || []), data.payload.systemMessage] : this.roomState?.chatMessages };
-          if (data.type === 'PARTICIPANT_LEFT' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, hostId: data.payload.newHostId || this.roomState?.hostId, chatMessages: data.payload.systemMessage ? [...(this.roomState?.chatMessages || []), data.payload.systemMessage] : this.roomState?.chatMessages };
-          if (data.type === 'HOST_CHANGED' && data.payload?.hostId) this.roomState = { ...(this.roomState || {}), hostId: data.payload.hostId, participants: data.payload.participants || this.roomState?.participants };
-          if (data.type === 'NEW_CHAT_MESSAGE' && data.payload) this.roomState = { ...(this.roomState || {}), chatMessages: [...(this.roomState?.chatMessages || []), data.payload].slice(-80) };
+          if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, chatMessages: data.payload.systemMessage ? [...(this.roomState?.chatMessages || []), data.payload.systemMessage].slice(-80) : this.roomState?.chatMessages };
+          if (data.type === 'PARTICIPANT_LEFT' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, hostId: data.payload.newHostId || this.roomState?.hostId, chatMessages: data.payload.systemMessage ? [...(this.roomState?.chatMessages || []), data.payload.systemMessage].slice(-80) : this.roomState?.chatMessages };
+          if (data.type === 'HOST_CHANGED' && data.payload?.hostId) this.roomState = { ...(this.roomState || {}), hostId: data.payload.hostId, participants: data.payload.participants || this.roomState?.participants, chatMessages: data.payload.systemMessage ? [...(this.roomState?.chatMessages || []), data.payload.systemMessage].slice(-80) : this.roomState?.chatMessages };
+          if ((data.type === 'NEW_CHAT_MESSAGE' || data.type === 'RECEIVE_CHAT') && data.payload) this.roomState = { ...(this.roomState || {}), chatMessages: [...(this.roomState?.chatMessages || []), data.payload].slice(-80) };
           if (data.type === 'REACTION_BURST' && data.payload) window.dispatchEvent(new CustomEvent('syncbeat:room-reaction', { detail: data.payload }));
           this.listeners.forEach((listener) => listener(data));
         } catch (err) { console.error('Error handling WebSocket message:', err); }
       };
-      this.ws.onclose = () => {
-        this.stopPing();
-        if (!this.isExplicitlyClosed) {
-          const delay = Math.min(1500 * Math.pow(1.5, this.reconnectAttempts), 15000);
-          this.reconnectAttempts += 1;
-          if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-          this.reconnectTimeout = window.setTimeout(() => { if (this.currentRoomId && this.currentParticipant) this.connect(this.currentRoomId, this.currentParticipant, this.currentRoomOptions); }, delay);
-          this.emitStatus('SESSION_RECONNECTING');
-        }
-      };
+      this.ws.onclose = () => { this.stopPing(); if (!this.isExplicitlyClosed) { const delay = Math.min(1500 * Math.pow(1.5, this.reconnectAttempts), 15000); this.reconnectAttempts += 1; if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout); this.reconnectTimeout = window.setTimeout(() => { if (this.currentRoomId && this.currentParticipant) this.connect(this.currentRoomId, this.currentParticipant, this.currentRoomOptions); }, delay); this.emitStatus('SESSION_RECONNECTING'); } };
       this.ws.onerror = () => this.emitStatus('SESSION_ERROR');
     } catch { this.emitStatus('SESSION_ERROR'); }
   }
@@ -91,15 +64,8 @@ export class WebSocketClient {
   public disconnect() { this.isExplicitlyClosed = true; this.stopPing(); if (this.reconnectTimeout) { clearTimeout(this.reconnectTimeout); this.reconnectTimeout = null; } if (this.ws) { try { this.ws.close(); } catch {} this.ws = null; } this.currentRoomId = null; this.currentRoomOptions = undefined; this.roomQueue = []; this.roomState = null; this.reconnectAttempts = 0; }
   public addListener(listener: WebSocketEventListener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   public send(type: string, data: any) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type, roomId: this.currentRoomId, payload: data.payload !== undefined ? data.payload : data })); }
-
-  public broadcastPlayback(action: 'PLAY_PAUSE' | 'SEEK' | 'CHANGE_SONG' | 'SET_RATE', params: { songId?: string; song?: Song; position?: number; isPlaying?: boolean; playbackRate?: number; senderName?: string }) {
-    if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) this.updateQueue([params.songId, ...this.roomQueue.filter((id) => id !== params.songId)]);
-    this.send('PLAYBACK_ACTION', { action, ...params });
-  }
+  public broadcastPlayback(action: 'PLAY_PAUSE' | 'SEEK' | 'CHANGE_SONG' | 'SET_RATE', params: { songId?: string; song?: Song; position?: number; isPlaying?: boolean; playbackRate?: number; senderName?: string }) { if (action === 'CHANGE_SONG' && params.songId && this.currentRoomId) this.updateQueue([params.songId, ...this.roomQueue.filter((id) => id !== params.songId)]); this.send('PLAYBACK_ACTION', { action, ...params }); }
   public updateQueue(queue: string[]) { this.roomQueue = [...new Set(queue)]; this.roomState = { ...(this.roomState || {}), queue: this.roomQueue }; this.send('QUEUE_UPDATE', { queue: this.roomQueue }); }
-  public addSongToQueue(songId: string) { if (!this.currentRoomId || !songId || this.roomQueue.includes(songId)) return; this.updateQueue([...this.roomQueue, songId]); }
-  public removeSongFromQueue(songId: string) { this.updateQueue(this.roomQueue.filter((id) => id !== songId)); }
-  public clearQueue() { this.updateQueue([]); }
   public getQueue(): string[] { return [...this.roomQueue]; }
   public getRoomState(): Partial<RoomState> | null { return this.roomState ? { ...this.roomState, queue: [...(this.roomState.queue || this.roomQueue)] } : null; }
   public getRoomId(): string | null { return this.currentRoomId; }
@@ -112,8 +78,17 @@ export class WebSocketClient {
   public syncFocusTimer(action: 'SET_TIMER' | 'TOGGLE_TIMER' | 'RESET_TIMER', payload: { timerType?: 'pomodoro' | 'stopwatch' | 'idle'; duration?: number; remaining?: number; isRunning?: boolean }) { this.send('FOCUS_TIMER_ACTION', { action, ...payload }); }
   public getLatency(): number { return this.latencyMs || 24; }
 
-  public createRoom(roomName: string, hostName: string, moodTheme = 'love', isPrivate = false) { const roomId = 'room-' + Math.random().toString(36).substring(2, 8); const participant = { id: this.currentParticipant?.id || 'host-' + Math.random().toString(36).substring(2, 6), name: hostName, avatar: this.currentParticipant?.avatar || '' }; this.connect(roomId, participant, { roomName, moodTheme, isPublic: !isPrivate }); }
-  public joinRoom(roomId: string, name: string, avatar: string) { const cleanId = roomId.trim().match(/(?:[?&]room=)?([^/?#]+)$/)?.[1] || roomId.trim(); const participant = { id: this.currentParticipant?.id || 'guest-' + Math.random().toString(36).substring(2, 6), name, avatar }; this.connect(cleanId, participant); }
+  public createRoom(roomName: string, hostName: string, moodTheme = 'love', isPrivate = false) {
+    const profile = getLocalProfile();
+    const participant = { id: profile?.id || `host-${Math.random().toString(36).substring(2, 6)}`, name: profile?.name || hostName, avatar: profile?.avatar || '' };
+    this.connect('room-' + Math.random().toString(36).substring(2, 8), participant, { roomName, moodTheme, isPublic: !isPrivate });
+  }
+  public joinRoom(roomId: string, name: string, avatar: string) {
+    const profile = getLocalProfile();
+    let cleanId = roomId.trim(); try { const url = new URL(cleanId, window.location.origin); cleanId = url.searchParams.get('room') || cleanId; } catch {}
+    const participant = { id: profile?.id || `guest-${Math.random().toString(36).substring(2, 6)}`, name: profile?.name || name, avatar: profile?.avatar || avatar };
+    this.connect(cleanId, participant);
+  }
   public leaveRoom() { this.disconnect(); }
   private startPing() { this.stopPing(); this.pingInterval = window.setInterval(() => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'PING', roomId: this.currentRoomId, payload: { timestamp: Date.now() } })); }, 10000); }
   private stopPing() { if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; } }
