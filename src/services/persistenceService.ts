@@ -36,7 +36,7 @@ function migrateLegacy<T>(legacyKey: string, key: string, fallback: T): T {
 export interface ListeningHistoryItem {
   song: Song;
   playedAt: number;
-  source: 'search' | 'queue' | 'playlist' | 'session' | 'unknown';
+  source: 'search' | 'queue' | 'playlist' | 'session' | 'app' | 'unknown';
 }
 
 export interface SessionHistoryItem {
