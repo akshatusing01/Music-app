@@ -13,6 +13,10 @@ export const AuthController: React.FC = () => {
   useEffect(() => {
     let mounted = true;
     authService.getSession().then((value) => { if (mounted) setSession(value); });
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
     return authService.onAuthStateChange((value) => setSession(value));
   }, []);
 
@@ -22,10 +26,8 @@ export const AuthController: React.FC = () => {
     setBusy(true);
     cloudPersistenceService.loadUserData().then((data) => {
       if (cancelled || !data) return;
-      try {
-        window.dispatchEvent(new CustomEvent('syncbeat:cloud-restored', { detail: data }));
-      } finally { setBusy(false); }
-    }).catch(() => { if (!cancelled) setBusy(false); });
+      window.dispatchEvent(new CustomEvent('syncbeat:cloud-restored', { detail: data }));
+    }).catch(() => undefined).finally(() => { if (!cancelled) setBusy(false); });
     return () => { cancelled = true; };
   }, [session]);
 
@@ -33,11 +35,7 @@ export const AuthController: React.FC = () => {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed right-4 bottom-24 md:bottom-6 z-[70] rounded-full border border-white/10 bg-zinc-900/90 backdrop-blur px-4 py-2 text-xs font-bold text-white shadow-xl hover:bg-zinc-800"
-        title={session ? 'Account' : 'Sign in'}
-      >
+      <button onClick={() => setOpen(true)} className="fixed right-4 bottom-24 md:bottom-6 z-[70] rounded-full border border-white/10 bg-zinc-900/90 backdrop-blur px-4 py-2 text-xs font-bold text-white shadow-xl hover:bg-zinc-800" title={session ? 'Account' : 'Sign in'}>
         {session ? (busy ? 'Syncing…' : 'Account') : 'Sign in'}
       </button>
       {open && <AuthModal onClose={() => setOpen(false)} onAuthenticated={() => setOpen(false)} />}
