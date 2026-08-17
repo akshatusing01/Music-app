@@ -20,6 +20,13 @@ export const authService = {
     if (!supabase) throw new Error('Cloud authentication is not configured yet.');
     return supabase.auth.signInWithPassword({ email, password });
   },
+  async signInWithGoogle() {
+    if (!supabase) throw new Error('Cloud authentication is not configured yet.');
+    return supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
+  },
   async signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
