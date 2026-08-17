@@ -47,12 +47,28 @@ export class WebSocketClient {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'PONG') { this.latencyMs = Math.max(1, Date.now() - data.payload?.timestamp); return; }
-          if (data.type === 'ROOM_SYNC_STATE' && data.payload) { this.roomState = data.payload; this.roomQueue = [...(data.payload.queue || [])]; }
+          if (data.type === 'ROOM_SYNC_STATE' && data.payload) {
+            this.roomState = data.payload;
+            this.roomQueue = [...(data.payload.queue || [])];
+            if (data.payload.currentSong?.youtubeVideoId) {
+              window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: {
+                song: data.payload.currentSong,
+                isPlaying: Boolean(data.payload.isPlaying),
+                position: Number(data.payload.playbackPosition || 0),
+                playbackPosition: Number(data.payload.playbackPosition || 0),
+                playbackRate: Number(data.payload.playbackRate || 1),
+                lastStateUpdate: data.payload.lastStateUpdate,
+              }}));
+            }
+          }
           if (data.type === 'QUEUE_SYNC' && data.payload?.queue) { this.roomQueue = [...data.payload.queue]; this.roomState = { ...(this.roomState || {}), queue: this.roomQueue }; }
           if (data.type === 'PLAYBACK_SYNC' && data.payload) {
             data.payload.songId = data.payload.songId || data.payload.currentSongId;
             data.payload.position = data.payload.position ?? data.payload.playbackPosition ?? 0;
             this.roomState = { ...(this.roomState || {}), currentSongId: data.payload.currentSongId || data.payload.songId || null, currentSong: data.payload.song || this.roomState?.currentSong, isPlaying: data.payload.isPlaying, playbackPosition: data.payload.playbackPosition ?? data.payload.position ?? 0, playbackRate: data.payload.playbackRate ?? 1, lastStateUpdate: data.payload.lastStateUpdate ?? Date.now() };
+            if (data.payload.song?.youtubeVideoId) {
+              window.dispatchEvent(new CustomEvent('syncbeat:room-playback', { detail: data.payload }));
+            }
           }
           if (data.type === 'PARTICIPANT_JOINED' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants };
           if (data.type === 'PARTICIPANT_LEFT' && data.payload?.participants) this.roomState = { ...(this.roomState || {}), participants: data.payload.participants, hostId: data.payload.newHostId || this.roomState?.hostId };
