@@ -28,6 +28,7 @@ class YouTubePlayerController {
   private ready = false;
   private pendingLoad: PendingLoad | null = null;
   private desiredPlaying = false;
+  private syncOverlay: HTMLButtonElement | null = null;
 
   constructor() {
     window.addEventListener('syncbeat:room-playback', (event) => {
@@ -53,10 +54,10 @@ class YouTubePlayerController {
   private async applyRoomPlayback(payload: any) {
     const song = payload.song;
     const remoteVideoId = song?.youtubeVideoId || null;
+    if (!remoteVideoId) return;
     const position = this.getAuthoritativePosition(payload);
     const rate = Math.max(0.25, Math.min(2, Number(payload.playbackRate ?? 1)));
     const shouldPlay = Boolean(payload.isPlaying);
-    if (!remoteVideoId) return;
 
     if (this.videoId !== remoteVideoId) {
       await this.load(remoteVideoId, position, shouldPlay, rate);
@@ -101,40 +102,75 @@ class YouTubePlayerController {
     this.host = host;
     await this.loadApi();
     if (!this.host || !window.YT?.Player) return;
-    if (!this.player) {
-      this.player = new window.YT.Player(this.host, {
-        width: '100%', height: '100%',
-        playerVars: { autoplay: 0, controls: 0, disablekb: 1, enablejsapi: 1, playsinline: 1, rel: 0, fs: 0, iv_load_policy: 3, origin: window.location.origin },
-        events: {
-          onReady: () => {
-            this.ready = true;
-            const iframe = this.host?.querySelector('iframe');
-            if (iframe) iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
-            this.emit('syncbeat:youtube-ready');
-            this.flushPendingLoad();
-          },
-          onStateChange: (event: any) => {
-            const playing = event.data === window.YT.PlayerState.PLAYING;
-            const ended = event.data === window.YT.PlayerState.ENDED;
-            this.state.isPlaying = playing;
-            this.emit('syncbeat:youtube-state', { ...this.state, videoId: this.videoId });
-            if (ended) { this.desiredPlaying = false; this.stopTicker(); this.emit('syncbeat:youtube-ended', { videoId: this.videoId }); }
-            else if (playing) { this.desiredPlaying = true; this.startTicker(); }
-            else this.stopTicker();
-          },
-          onAutoplayBlocked: () => {
-            this.desiredPlaying = false;
-            this.state.isPlaying = false;
-            this.emit('syncbeat:youtube-autoplay-blocked', { videoId: this.videoId });
-          },
-          onError: (event: any) => {
-            this.desiredPlaying = false;
-            this.state.isPlaying = false;
-            this.emit('syncbeat:youtube-error', { code: event.data, videoId: this.videoId });
-          },
+    if (!this.player) this.createPlayer(this.host);
+  }
+
+  private createPlayer(host: HTMLElement) {
+    this.ready = false;
+    this.player = new window.YT.Player(host, {
+      width: '100%', height: '100%',
+      playerVars: { autoplay: 0, controls: 0, disablekb: 1, enablejsapi: 1, playsinline: 1, rel: 0, fs: 0, iv_load_policy: 3, origin: window.location.origin },
+      events: {
+        onReady: () => {
+          this.ready = true;
+          const iframe = this.host?.querySelector('iframe');
+          if (iframe) iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+          this.emit('syncbeat:youtube-ready');
+          this.flushPendingLoad();
         },
-      });
-    }
+        onStateChange: (event: any) => {
+          const playing = event.data === window.YT.PlayerState.PLAYING;
+          const ended = event.data === window.YT.PlayerState.ENDED;
+          this.state.isPlaying = playing;
+          this.emit('syncbeat:youtube-state', { ...this.state, videoId: this.videoId });
+          if (ended) { this.desiredPlaying = false; this.stopTicker(); this.emit('syncbeat:youtube-ended', { videoId: this.videoId }); }
+          else if (playing) { this.desiredPlaying = true; this.removeSyncPrompt(); this.startTicker(); }
+          else this.stopTicker();
+        },
+        onAutoplayBlocked: () => {
+          this.desiredPlaying = false;
+          this.state.isPlaying = false;
+          this.emit('syncbeat:youtube-autoplay-blocked', { videoId: this.videoId });
+          this.showSyncPrompt();
+        },
+        onError: (event: any) => {
+          this.desiredPlaying = false;
+          this.state.isPlaying = false;
+          this.emit('syncbeat:youtube-error', { code: event.data, videoId: this.videoId });
+        },
+      },
+    });
+  }
+
+  private showSyncPrompt() {
+    if (this.syncOverlay) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '▶ Tap to sync playback';
+    button.setAttribute('aria-label', 'Tap to sync playback with the host');
+    Object.assign(button.style, {
+      position: 'fixed', left: '50%', bottom: '88px', transform: 'translateX(-50%)', zIndex: '9999',
+      padding: '12px 18px', borderRadius: '999px', border: '1px solid rgba(244,63,94,.55)',
+      background: '#181116', color: '#fff', fontSize: '13px', fontWeight: '700',
+      boxShadow: '0 8px 30px rgba(0,0,0,.45)', cursor: 'pointer',
+    });
+    button.addEventListener('click', () => {
+      const target = this.pendingLoad?.startSeconds ?? this.state.currentTime;
+      if (this.player && this.ready) {
+        if (this.videoId) this.player.loadVideoById({ videoId: this.videoId, startSeconds: Math.max(0, target) });
+        this.setRate(this.pendingLoad?.rate ?? 1);
+        this.player.playVideo?.();
+        this.desiredPlaying = true;
+      }
+      this.removeSyncPrompt();
+    });
+    document.body.appendChild(button);
+    this.syncOverlay = button;
+  }
+
+  private removeSyncPrompt() {
+    this.syncOverlay?.remove();
+    this.syncOverlay = null;
   }
 
   async load(videoId: string, startSeconds = 0, autoplay = true, rate = 1) {
