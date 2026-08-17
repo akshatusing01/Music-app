@@ -1,4 +1,4 @@
-# SyncBeat / Cineosync Music — Project Context
+# Cineosync Music — Project Context
 
 > Living source of truth for product decisions, UI direction, architecture, implementation milestones, bugs, and testing notes.
 >
@@ -8,7 +8,7 @@
 
 - Product is evolving from a functional prototype into a real, polished app.
 - Existing functionality should be preserved or improved while the UI is substantially redesigned.
-- We will work in explicit stages:
+- Work in explicit stages:
   1. Product/UI discovery and questions
   2. UX structure and information architecture
   3. Visual design system
@@ -19,21 +19,27 @@
 - No major redesign should silently remove a working feature.
 - No deployment should be called "ready" without checking the actual deployment/build/runtime status available to us.
 - Mobile is a first-class target because the app is regularly tested on phones.
+- Keep major product decisions in this file so future conversations can recover context from the repository.
 
 ## 1. Product Vision
 
-Working concept: **premium social music listening platform**.
+**Final product name:** Cineosync Music
 
-Core idea: personal music discovery + real-time shared listening + chat/reactions + focus/productivity experiences.
+**Positioning:** A creative music + lifestyle platform. Music is the center, but the product extends into social listening, public discovery, focus/productivity, gym energy, couple experiences, and other music-led lifestyles.
 
-Important existing capabilities:
+**Product principle:** Familiar enough to understand immediately, but visually and experientially original enough that it does not feel like a Spotify/YouTube Music clone.
+
+## 2. Current Functional Foundation
+
+Existing capabilities to preserve/improve:
 - Real YouTube music search/results
 - Real YouTube playback
 - Queue/player controls
 - Real-time listening rooms
 - Room invite links
 - Room-name joining
-- Shared host-authoritative playback synchronization
+- Host-authoritative playback synchronization
+- Mobile autoplay fallback for synchronized YouTube playback
 - Live chat/reactions
 - Host transfer / automatic host promotion
 - In-room YouTube search
@@ -41,103 +47,258 @@ Important existing capabilities:
 - Library, likes, playlists, history
 - Supabase-backed auth/cloud persistence foundation
 - Profile avatar upload
-- SyncBeat user ID/friend-code foundation
+- Persistent SyncBeat ID/friend-code foundation
 - Friend requests
 - Room invitations
 
-## 2. Current Technical Foundation
+## 3. Current Technical Foundation
 
 - Frontend: React + TypeScript + Vite
 - Hosting/deployment: Vercel
 - Realtime room transport: WebSocket endpoint under `/api/ws`
 - Database/auth/storage: Supabase
 - YouTube playback: YouTube IFrame Player API
-- Existing local persistence remains part of the app for graceful fallback
+- Local persistence remains for graceful fallback/offline-first behavior
 
-## 3. Current UX Problems / Redesign Motivation
+## 4. Redesign Goals
 
-Known problems accumulated through prototype iterations:
-- Mobile controls and fixed player can overlap content.
-- Session UI can become too dense on small screens.
-- Navigation and feature placement need a clearer platform-like structure.
-- Some features are visually buried even when functional.
-- Prototype/demo remnants must be removed from the final experience.
-- UI needs stronger hierarchy, spacing, discoverability, and consistency.
+### Product character
+- Creative, premium, atmospheric, music-first.
+- Lifestyle-oriented rather than simply a streaming catalog.
+- Strong sense of identity, presence, mood, and context.
+- Public discovery should coexist with personal/private experiences.
 
-## 4. Non-Negotiable Functional Principles
+### Visual direction
+- **Obsidian + subtle glass + restrained accent color**.
+- Avoid heavy neon, excessive gradients, noisy glassmorphism, and generic AI-dashboard aesthetics.
+- Introduce depth through typography, spacing, shadows, translucency, artwork, and motion rather than many colors.
+- Establish a new visual language instead of copying existing music platforms.
 
-### Listening sessions
-- Host is authoritative for shared playback timeline.
-- Joined members should not create an independent playback timeline when using shared controls.
-- Mobile autoplay restrictions must be handled gracefully with a user-gesture fallback.
-- Joining a room by name must never create a fake/nonexistent room.
-- Invite links must resolve to real existing rooms.
-- Search/change-track must not accidentally disconnect a user from the active room.
+### Navigation decision
+Primary mobile navigation is:
+**Home / Discover / Sessions / Library / Profile**
 
-### Identity/social
-- Authenticated users should have a persistent account identity.
-- Each user should have a readable unique SyncBeat ID/friend code.
-- Profile pictures can be selected from the device and stored in Supabase Storage.
-- Friend requests and room invitations must be tied to authenticated identities.
+### Sessions decision
+Sessions is a **major first-class destination**, equal in importance to Home and Discover.
 
-## 5. Redesign Process
+### Player decision
+The player becomes a **music cockpit** rather than a conventional bottom bar.
+It should support a compact state and an expanded immersive state while maintaining fast access to essential playback controls.
 
-### Stage A — Discovery
-We ask questions about:
-- target users and highest-value use cases
-- product positioning
-- navigation model
-- content hierarchy
-- player behavior
-- sessions UX
-- mobile-first interaction priorities
-- social graph and profile experience
-- visual personality
+### Mobile player priority
+Three controls must always be instantly reachable:
+1. Play / Pause
+2. Forward
+3. Like
 
-### Stage B — UX / Information Architecture
-We define:
-- app shell
-- primary navigation
-- secondary navigation
-- home/dashboard structure
-- search/discovery structure
-- library structure
-- session/room structure
-- profile/social structure
-- player hierarchy
-- mobile navigation and gestures
+### Social decision
+Cineosync Music will support a **public discovery layer**, while still supporting private/friends-first experiences.
 
-### Stage C — Visual System
-We define:
-- color system
-- typography
-- spacing/grid
-- surfaces/cards
-- iconography
-- motion
-- artwork treatment
-- states: loading/empty/error/offline/live
+### Identity decision
+The user's visible username/handle is a first-class identity across the product, not something hidden only inside settings.
 
-### Stage D — Architecture
-We map UI features to:
-- React component boundaries
-- state ownership
-- local persistence
-- Supabase tables/auth/storage
-- realtime WebSocket events
-- YouTube player lifecycle
-- routing/deep links
+### Discovery decision
+Discovery should adapt to listener context:
+- Returning users: past listening activity, saved tastes, recent behavior, and evolving preferences.
+- New users: onboarding preferences such as artists, languages, genres, moods, and listening goals.
+- Discovery should eventually blend these signals with context such as time, mode, sessions, and lifestyle intent.
 
-### Stage E — Implementation
-Implementation happens in small, verifiable milestones. Each milestone records:
-- scope
-- affected files
-- commit SHA
-- deployment
-- verification status
-- known limitations
+## 5. Proposed Stage B — UX / Information Architecture Blueprint
 
-## 6. Decision Log
+### 5.1 App shell
+Persistent shell should feel like one coherent music environment rather than a collection of pages.
+
+Desktop:
+- Left navigation rail / expandable sidebar
+- Central content stage
+- Optional contextual right rail
+- Persistent compact music cockpit
+
+Mobile:
+- 5-item bottom navigation: Home / Discover / Sessions / Library / Profile
+- Persistent compact cockpit above navigation when music is active
+- Cockpit expands into a full-screen/near-full-screen Now Playing experience
+- No controls or chat should be obscured by fixed UI
+
+### 5.2 Home — "For You"
+Home should be a personalized listening environment, not a generic dashboard.
+
+Recommended hierarchy:
+1. Greeting + current identity/presence
+2. Continue listening / resume context
+3. Personalized discovery
+4. Recently played / familiar favorites
+5. Mood & lifestyle contexts
+6. Friends / public listening activity
+7. Sessions worth joining
+8. Curated editorial / emerging discovery
+
+New-user state:
+- Short preference onboarding rather than an empty feed.
+- Ask for artists, languages, genres, moods, and use cases.
+- Use those signals to immediately create a useful first home feed.
+
+### 5.3 Discover
+Discover is the exploration engine.
+
+Sections should be context-driven instead of static:
+- Search
+- Trending in your language/region
+- Because you listened to...
+- Artist discovery
+- Language discovery
+- Mood discovery
+- Lifestyle: Focus / Gym / Couple / Chill / Travel etc.
+- Public rooms
+- Community moments / recommendations
+
+### 5.4 Sessions
+Sessions is a primary destination and social control center.
+
+Core states:
+- Discover public rooms
+- Create room
+- Join existing room by name, ID, or link
+- Invitations
+- Active room
+- Participants
+- Shared playback
+- Queue
+- Chat/reactions
+- Host controls
+- Host transfer
+- Room discovery/public visibility
+
+The active room should feel like a distinct social space without removing the rest of the app's identity.
+
+### 5.5 Library
+Library should focus on the user's relationship with music:
+- Liked
+- Playlists
+- Recently played
+- Imported playlists
+- Saved sessions/moments (future)
+- Offline/downloads where supported
+
+### 5.6 Profile
+Profile should become a social identity hub:
+- Avatar
+- Visible username/handle
+- SyncBeat ID
+- Listening identity / genres / languages
+- Friends
+- Friend requests
+- Room invites
+- Listening activity/privacy
+- Account/auth
+- Preferences
+- Appearance/audio settings
+
+### 5.7 Music cockpit
+Compact state:
+- Artwork
+- Track / artist
+- Play/pause
+- Forward
+- Like
+- Progress hint
+
+Expanded cockpit:
+- Large artwork / visual atmosphere
+- Full playback controls
+- Queue
+- Lyrics
+- Session context
+- Share
+- Playback settings
+- Equalizer
+- Output/quality controls
+
+The cockpit should feel like the app's signature interaction, not a generic media bar.
+
+## 6. Discovery / Recommendation Architecture Direction
+
+Future recommendation system should be modular and explainable.
+
+Signal groups:
+- Explicit preferences: artists, languages, genres, moods
+- Behavioral: plays, skips, repeats, likes, saves, playlist edits
+- Context: time, day, device, current mode, focus/gym/couple intent
+- Social: friends' activity, public room trends, shared listening
+- Freshness: new releases, emerging artists, changing tastes
+
+Recommendation output types:
+- Track rows
+- Artist modules
+- Mood collections
+- Contextual mixes
+- Public room recommendations
+- "Because you listened to..." explanations
+
+Do not make recommendations feel like an opaque algorithmic feed.
+
+## 7. Design System Direction
+
+### Color
+- Base: near-black obsidian surfaces
+- Secondary: graphite/charcoal surfaces
+- Glass: restrained translucent white/gray layers
+- Accent: one primary restrained accent with limited semantic supporting colors
+- Status colors reserved for states, not decoration
+
+### Typography
+- Strong display style for identity/headings
+- Highly readable UI/body text
+- Monospace only for technical/session metadata where useful
+- Clear typographic hierarchy rather than excessive font-size variation
+
+### Surfaces
+- Soft rounded geometry, but not every element as a floating card
+- Use sections, dividers, depth and whitespace to avoid card overload
+- Glass primarily for high-value overlays/cockpit/session surfaces
+
+### Motion
+- Subtle and purposeful
+- Transitions reinforce navigation, playback state, room state, and mood
+- Avoid animation for decoration alone
+
+## 8. Architecture Direction Before Implementation
+
+The UI redesign should separate concerns clearly:
+
+### App shell state
+Navigation, modal state, viewport-specific layout, player visibility.
+
+### Playback domain
+Current track, queue, position, playback state, YouTube player lifecycle.
+
+### Session domain
+Room membership, host, room state, shared queue, shared playback authority, chat/reactions.
+
+### Identity/social domain
+Auth, profile, username, SyncBeat ID, friends, friend requests, room invites.
+
+### Discovery domain
+Search, recommendation signals, discovery feed, public rooms.
+
+### Library domain
+Likes, playlists, history, imports, downloads.
+
+### Focus/lifestyle domain
+Focus timer, stopwatch, ambient sound, mood/mode contexts.
+
+Avoid a single `App.tsx` becoming the permanent owner of every domain.
+
+## 9. Stage B Questions — Pending Product Decisions
+
+1. Home hero/first viewport name: **For You**, **Your Flow**, **Cineosync**, **Listen Now**, or another name.
+2. Public-room presentation: Discover, Sessions, or both with different presentations.
+3. Accent behavior: one global restrained accent vs context/mode-specific accent variants.
+4. Expanded cockpit presentation: full-screen route, bottom sheet, or immersive overlay.
+5. Username semantics: globally unique/editable username vs stable SyncBeat ID plus editable username.
+6. Onboarding: upfront preference setup vs progressive non-blocking setup.
+
+## 10. Decision Log
 
 ### 2026-08-18 — Product redesign reset
 **Decision:** Stop treating the current UI as final. Begin a structured redesign while preserving/improving functionality.
@@ -146,46 +307,32 @@ Implementation happens in small, verifiable milestones. Each milestone records:
 
 **Decision:** Redesign will happen through discovery → UX architecture → visual system → technical architecture → implementation → verification.
 
-## 7. Current Implementation Notes
+### 2026-08-18 — Stage A product direction locked
+**Decision:** Product positioning is **music + lifestyle**, with a creative and unique identity.
 
-- Supabase project: `vpkrrdhqpgzelcrsulec`
-- Production site: `music-app-navy-iota.vercel.app`
-- Main GitHub repository: `akshatusing01/Music-app`
-- Current branch of record: `main`
+**Decision:** Personalized discovery should adapt to user history and, for new users, explicit preferences such as artists, languages and genres.
 
-## 8. Open Questions — Stage A
+**Decision:** Primary navigation is **Home / Discover / Sessions / Library / Profile**.
 
-Answer these before we lock the new information architecture.
+**Decision:** Sessions is a **major destination** rather than a secondary feature.
 
-### A. Product positioning
-1. What should the app feel like in one sentence: **premium music platform**, **social listening network**, **music + focus lifestyle app**, or a deliberate combination?
-2. Which use case deserves the strongest emphasis on the home screen: solo listening, discovering music, listening with friends/couple, or focus/gym sessions?
+**Decision:** The player should become a **music cockpit**.
 
-### B. Navigation
-3. For the primary mobile navigation, would you prefer:
-   - Home / Search / Sessions / Library / Profile
-   - Home / Discover / Sessions / Library / Profile
-   - a custom 5-item structure you already have in mind?
-4. Should Sessions feel like a first-class destination equal to Home, or more like a mode entered from music/search?
+**Decision:** On mobile, Play/Pause, Forward and Like are the three always-reachable controls.
 
-### C. Player
-5. Should the player behave more like a modern compact bottom sheet (tap to expand), or a persistent mini-player with a separate full-screen Now Playing page?
-6. Which 3 controls must always be instantly reachable on mobile?
+**Decision:** Visual system direction is **Obsidian + subtle glass + restrained accent color**.
 
-### D. Visual direction
-7. Do you want to retain the current dark/premium/neon aesthetic, or move toward something more refined/minimal such as **Obsidian + soft glass + restrained accent color**?
-8. Should the redesign feel closer to mainstream music platforms for familiarity, or intentionally distinctive/experimental?
+**Decision:** The design language should be distinct and not a visual copy of mainstream platforms.
 
-### E. Social experience
-9. Should the app feel primarily private/friends-only, or gradually support public discovery of rooms/profiles?
-10. Should the SyncBeat ID be prominently visible like a username/handle, or remain mostly inside Profile/Friends?
+**Decision:** Cineosync Music includes a **public discovery layer** in addition to private/friends-first experiences.
 
-### F. Product naming
-11. Is the product name for the new UI **SyncBeat**, **Cineosync Music**, or are we still deciding?
+**Decision:** Usernames/handles are visible first-class identity throughout the app.
 
----
+**Decision:** Product name is **Cineosync Music**.
 
-## 9. Future Decision Template
+**Decision:** Stage A is substantially complete. Proceed to Stage B information architecture refinement, then Stage C visual system, then technical architecture and implementation.
+
+## 11. Future Decision Template
 
 ### [DATE] — [Decision title]
 **Context:**
