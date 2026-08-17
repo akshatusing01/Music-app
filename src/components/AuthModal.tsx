@@ -12,8 +12,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onAuthenticated }
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  const signInWithGoogle = async () => {
+    setError(''); setNotice(''); setGoogleBusy(true);
+    try {
+      const { error: authError } = await authService.signInWithGoogle();
+      if (authError) throw authError;
+      onAuthenticated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google sign-in failed.');
+      setGoogleBusy(false);
+    }
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -42,15 +55,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onAuthenticated }
             <div className="text-[11px] uppercase tracking-[0.2em] text-rose-300">SyncBeat Account</div>
             <h2 className="text-2xl font-extrabold text-white mt-1">{mode === 'sign-in' ? 'Welcome back' : 'Create your account'}</h2>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl">×</button>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl" aria-label="Close">×</button>
         </div>
+
+        <button type="button" onClick={signInWithGoogle} disabled={googleBusy || busy} className="w-full rounded-2xl border border-white/10 bg-white text-zinc-950 font-bold py-3 transition hover:bg-zinc-100 disabled:opacity-50 flex items-center justify-center gap-3">
+          <span className="text-lg font-black">G</span>
+          {googleBusy ? 'Connecting to Google…' : 'Continue with Google'}
+        </button>
+
+        <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] text-zinc-600"><span className="h-px flex-1 bg-white/10" />or<span className="h-px flex-1 bg-white/10" /></div>
+
         <form onSubmit={submit} className="space-y-3">
           {mode === 'sign-up' && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Display name" className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-rose-400/60" />}
           <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-rose-400/60" />
           <input required minLength={6} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-rose-400/60" />
           {error && <div className="rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs p-3">{error}</div>}
           {notice && <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs p-3">{notice}</div>}
-          <button disabled={busy} className="w-full rounded-2xl bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-white font-bold py-3 transition">{busy ? 'Working…' : mode === 'sign-in' ? 'Sign in' : 'Create account'}</button>
+          <button disabled={busy || googleBusy} className="w-full rounded-2xl bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-white font-bold py-3 transition">{busy ? 'Working…' : mode === 'sign-in' ? 'Sign in with email' : 'Create account'}</button>
         </form>
         <button onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setError(''); setNotice(''); }} className="w-full mt-4 text-xs text-zinc-400 hover:text-white">{mode === 'sign-in' ? 'New here? Create an account' : 'Already have an account? Sign in'}</button>
       </div>
