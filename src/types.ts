@@ -21,9 +21,7 @@ export interface Song {
   mood: 'romance' | 'gym' | 'study' | 'party' | 'devotional' | 'indie' | 'chill';
   bpm?: number;
   tags: string[];
-  /** Direct audio URL only for audio the app is licensed/authorized to stream. */
   audioUrl?: string;
-  /** Official YouTube video ID. Playback uses YouTube's official embedded player; the app never downloads or proxies the audio. */
   youtubeVideoId?: string;
   audioSynthPreset?: 'bollywood-strings' | 'lofi-rhodes' | 'gym-bass' | 'acoustic-guitar' | 'edm-synth' | 'ambient-flute' | 'tamil-kuthu';
   lyrics: LyricLine[];
@@ -40,7 +38,14 @@ export interface FocusTimerState { active: boolean; timerType: 'pomodoro' | 'sto
 export interface StopwatchLap { lapNumber: number; lapTime: number; overallTime: number; }
 export interface AmbientSounds { rain: number; cafe: number; fire: number; templeBell: number; waves: number; whiteNoise: number; }
 export interface EqualizerPreset { name: string; gains: number[]; }
-export interface RoomState { roomId: string; roomName: string; moodTheme: string; hostId: string; currentSongId: string | null; isPlaying: boolean; playbackPosition: number; playbackRate: number; lastStateUpdate: number; queue: string[]; participants: RoomParticipant[]; chatMessages: ChatMessage[]; focusMode: { active: boolean; timerType: 'pomodoro' | 'stopwatch' | 'idle'; duration: number; remaining: number; isRunning: boolean; startedAt: number | null; }; isPublic: boolean; experienceMode?: ExperienceMode; }
+export interface RoomState {
+  roomId: string; roomName: string; moodTheme: string; hostId: string;
+  currentSongId: string | null; currentSong?: Song | null;
+  isPlaying: boolean; playbackPosition: number; playbackRate: number; lastStateUpdate: number;
+  queue: string[]; participants: RoomParticipant[]; chatMessages: ChatMessage[];
+  focusMode: { active: boolean; timerType: 'pomodoro' | 'stopwatch' | 'idle'; duration: number; remaining: number; isRunning: boolean; startedAt: number | null; };
+  isPublic: boolean; experienceMode?: ExperienceMode;
+}
 export interface ConnectedService { id: 'spotify' | 'youtube' | 'apple' | 'amazon' | 'jiosaavn'; name: string; iconColor: string; isConnected: boolean; accountEmail?: string; importedPlaylistsCount: number; supportsPlaybackSync: boolean; supportsMetadataImport: boolean; note: string; }
 export interface UserProfile { id: string; name: string; avatar: string; statusMessage: string; presenceMode: 'listening-now' | 'in-focus' | 'available-to-join' | 'invisible'; language: SupportedLanguage; theme: AppTheme; quality: AudioQuality; isWifiOnlyDownloads: boolean; favoriteGenres: string[]; stats: { minutesListened: number; sessionsJoined: number; focusHours: number; streakDays: number; }; }
 export type MainNavTab = 'home' | 'search' | 'library' | 'sessions' | 'focus' | 'lyrics' | 'profile' | 'importer';
