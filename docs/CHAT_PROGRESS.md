@@ -65,31 +65,31 @@ D3 changes include:
 - Like, playback, queue-adjacent controls, save/share/lyrics/equalizer access.
 - No visible embedded YouTube video in the product player.
 
-## Current milestone
+## Active milestone — D4: For You + Discover
+Plan: `docs/D4_DISCOVERY_PLAN.md`
+Status note: `docs/D4_STATUS.md`
 
-**D3 is deployed successfully.**
+### D4 implementation started
+- Added a dedicated `ForYouView` driven by real local listening history.
+- Recent listening is deduplicated and shown as Continue Listening.
+- For You scoring uses recently played artists and track tags from the existing data model.
+- New-user state uses currently available real tracks rather than fabricated/demo recommendations.
+- Contextual lifestyle moments are first-class UI actions.
+- Library, Sessions and mix creation remain directly reachable.
+- Existing `HomeView` route now re-exports `ForYouView`, so the App shell keeps its current contract.
 
-Next milestone: **D4 — For You + Discover**.
+Latest D4 wiring commit: `4a389f23cb0ee8083f842682e832b03085cb77bb`
 
-## D4 goal
-Turn the shell into a real Cineosync discovery experience without replacing the existing search/playback engine.
+Latest Vercel status for that commit: **PENDING**
+Deployment target: `https://vercel.com/akshatusing01-1782s-projects/music-app/JAoLwfWkbqpQkd3HAsTrSETR19Sk`
 
-For You should prioritize:
-1. Continue Listening
-2. Personalized recommendations from existing history/likes/preferences
-3. New-user preference setup when history is absent
-4. Mood/lifestyle modules
-5. Friends/public activity
-6. Recommended public sessions
-7. Editorial/emerging discovery
-
-Discover should prioritize:
-- Search
-- Artist/language/genre exploration
-- Contextual recommendations
-- Lifestyle modes
-- Public rooms
-- Explainable recommendation labels
+### D4 acceptance target
+- Search remains functional.
+- Existing playback remains functional.
+- For You uses real activity when available.
+- New users get useful empty/first-use behavior without fake tracks.
+- Discover remains backed by the real search system.
+- Navigation and sessions are not disrupted.
 
 ## Working rule
 Every significant product decision or implementation milestone must be recorded here and/or in the appropriate detailed docs. Never claim a feature is fully verified unless it has actually been tested in the relevant production environment.
