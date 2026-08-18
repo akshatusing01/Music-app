@@ -1,0 +1,1 @@
+D4 implementation started: For You is being rebuilt around real local history, likes, playlists, language and available track metadata. No synthetic/fake content is introduced. Discover remains backed by the real YouTube search service.
