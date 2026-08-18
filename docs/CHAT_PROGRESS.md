@@ -32,6 +32,7 @@ This file is a compact recovery log for future ChatGPT/Codex sessions. The detai
 - Library/likes/playlists/history
 - Supabase auth/profile/avatar/cloud persistence
 - Friend requests and room invitations
+- Real playlist imports
 
 ## Completed milestones
 
@@ -47,58 +48,50 @@ Relevant commits:
 - `4ebdc374f496b0bbe8e47498e808ca8b04bce9bb`
 - `41a04a40550ae919c31208dafb46d362d3f6cf4a`
 
-The Cineosync shell/navigation was implemented. Vercel deployment completed successfully afterward.
+The Cineosync shell/navigation was implemented and later deployed successfully.
 
 ### D3 — Music Cockpit
 `f93b755815327c1d2e3bba0ee3df83e794bdf12a`
-
-Vercel status: **SUCCESS**
-Deployment target recorded by GitHub: `https://vercel.com/akshatusing01-1782s-projects/music-app/5Gbkh3NyYMiaPjUKuBVrqEv1TtHW`
-
-D3 changes include:
 - Legacy player presentation replaced with the Cineosync Music Cockpit direction.
-- YouTube remains an invisible playback provider rather than visible product UI.
-- Compact player state.
-- Expanded Now Playing/Cockpit state.
-- Mobile-safe controls and focus-visible states.
-- Progress/seek interaction.
-- Like, playback, queue-adjacent controls, save/share/lyrics/equalizer access.
-- No visible embedded YouTube video in the product player.
+- YouTube stays the playback provider rather than the visible product identity.
+- Compact player and expanded cockpit.
+- Mobile-safe playback controls.
+- Audio/video mode switch for YouTube-backed tracks.
 
-## Active milestone — D4: For You + Discover
-Plan: `docs/D4_DISCOVERY_PLAN.md`
-Status note: `docs/D4_STATUS.md`
-
-### D4 implementation started
-- Added a dedicated `ForYouView` driven by real local listening history.
-- Recent listening is deduplicated and shown as Continue Listening.
-- For You scoring uses recently played artists and track tags from the existing data model.
-- New-user state uses currently available real tracks rather than fabricated/demo recommendations.
-- Contextual lifestyle moments are first-class UI actions.
-- Library, Sessions and mix creation remain directly reachable.
-- Existing `HomeView` route now re-exports `ForYouView`, so the App shell keeps its current contract.
+### D4 — For You + Discover
+Planning and implementation docs remain in `docs/D4_DISCOVERY_PLAN.md` and related D4 notes.
 
 ### Playlist import production pass
-- Real YouTube public playlist import implemented with YouTube Data API pagination and deleted/private track filtering.
-- Spotify PKCE import implemented as metadata-to-playable-YouTube matching.
-- CSV/M3U/M3U8 import implemented with real YouTube matching.
-- Fake/default fallback tracks are not used on import failure.
-- Production mobile testing exposed a runtime `o is not a function` error when pressing **Import playlist**.
-- Root cause: `App.tsx` rendered `PlaylistImporterView` with an obsolete `onImport` prop while the component requires `onImportPlaylist` plus its required playlist/data callbacks.
-- Fixed in commit `38f0403e9483379d8d93882f12d6586cf4063db8` by wiring the required importer callbacks and data.
+- Real YouTube public playlist import with pagination and private/deleted track filtering.
+- Spotify PKCE metadata import mapped to playable YouTube matches.
+- CSV/M3U/M3U8 imports mapped to playable YouTube matches.
+- No fake/default tracks on import failure.
+- Mobile runtime error `o is not a function` was traced to an obsolete `onImport` prop and fixed in `38f0403e9483379d8d93882f12d6586cf4063db8`.
 
-### Mobile player visibility + playback mode pass
-Latest code commit: `377d239594862f0b0f94736f70ea9cb659b4d95c`
-- Fixed the mobile player being rendered underneath the fixed bottom navigation.
-- Compact player now sits above the mobile navigation lane and remains fully clickable.
-- Desktop placement remains flush to the viewport bottom.
-- Added a real **Audio / Video** mode switch to the Music Cockpit for YouTube-backed tracks.
-- Audio mode keeps YouTube as the invisible playback provider.
-- Video mode exposes the actual YouTube video inside the Cineosync cockpit while keeping Cineosync playback controls authoritative.
-- Video mode can be opened from the compact player on supported screens.
-- Kept the existing seek, play/pause, next/previous, shuffle, repeat, volume, quality, lyrics, equalizer, save and share controls.
-- Audio quality options use the actual `AudioQuality` union: `data-saver-64k`, `normal-128k`, and `high-320k`.
-- The YouTube iframe itself remains unbranded as the product UI; it is only exposed when the user explicitly chooses Video mode.
+## International visual redesign pass — 2026-08-18
+The prior UI was judged to feel too personalized/cheap. The new target is explicitly **Editorial Luxury × Intelligent Music** at international product quality.
+
+### Implemented
+- Rebuilt **For You** as an editorial, artwork-led home instead of a card-heavy dashboard.
+- Rebuilt **Discover** as contextual exploration plus real YouTube search, with recent searches, local hits, artists, playlists, like/queue/download actions and useful empty states.
+- Rebuilt **Library** around playlists, liked music, listening history, offline-saved tracks and real imports.
+- Rebuilt **Profile** around identity, avatar upload, editable display name/status, language, theme, audio quality, equalizer access and account state.
+- Refined global navigation to reduce decorative clutter and make the brand feel more restrained and premium.
+- Reduced excessive card/glow/border density and increased typographic hierarchy.
+- Mobile player is deliberately layered above bottom navigation and no longer hidden behind it.
+- The Music Cockpit keeps the real **Audio / Video** switch for YouTube-backed tracks.
+- Existing Sessions code is preserved to protect the realtime room/chat/host synchronization behavior while its presentation is gradually migrated to the new design system.
+
+### Implementation commits
+- For You: `b0ce5cfc236cb98ee0624bc53fed5165436d7147`
+- Global navigation: `e3a4eac56d538dc5388cfb883e1e5c1030f498cb`
+- Premium design system/shell CSS: `61f0c151ba1ba2c8a039cbc2bc8a38c4cd0fa5aa`
+- Discover: `173631eeccb6a728d3981c58c872584b1facca56`
+- Library: `c790d90b063d594bf509d7a8372f139142d7067e`
+- Profile: `18d0e2e4a1587d246d535aa2e79cd44c5abb2578`
+
+### Current deployment gate
+Latest commit `61f0c151ba1ba2c8a039cbc2bc8a38c4cd0fa5aa` has a Vercel check currently **PENDING**. The production redesign is not considered verified until Vercel reports success and the major mobile flows are manually exercised.
 
 ## Working rule
 Every significant product decision or implementation milestone must be recorded here and/or in the appropriate detailed docs. Never claim a feature is fully verified unless it has actually been tested in the relevant production environment.
