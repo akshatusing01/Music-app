@@ -80,26 +80,26 @@ Status note: `docs/D4_STATUS.md`
 
 Latest D4 wiring commit: `4a389f23cb0ee8083f842682e832b03085cb77bb`
 
-Latest Vercel status for that commit: **PENDING**
-Deployment target: `https://vercel.com/akshatusing01-1782s-projects/music-app/JAoLwfWkbqpQkd3HAsTrSETR19Sk`
-
-### D4 acceptance target
-- Search remains functional.
-- Existing playback remains functional.
-- For You uses real activity when available.
-- New users get useful empty/first-use behavior without fake tracks.
-- Discover remains backed by the real search system.
-- Navigation and sessions are not disrupted.
-
-## Playlist import production pass
+### Playlist import production pass
 - Real YouTube public playlist import implemented with YouTube Data API pagination and deleted/private track filtering.
 - Spotify PKCE import implemented as metadata-to-playable-YouTube matching.
 - CSV/M3U/M3U8 import implemented with real YouTube matching.
 - Fake/default fallback tracks are not used on import failure.
 - Production mobile testing exposed a runtime `o is not a function` error when pressing **Import playlist**.
-- Root cause: `App.tsx` rendered `PlaylistImporterView` with an obsolete `onImport` prop while the component requires `onImportPlaylist` (plus its required playlist/data callbacks). This left the callback undefined at runtime.
-- Fixed in commit `38f0403e9483379d8d93882f12d6586cf4063db8` by wiring `availableSongs`, `playlists`, `onImportPlaylist`, `onPlayPlaylist`, `language`, and `onPlaySong` into the importer.
-- Vercel deployment for the fix is currently **PENDING**; do not call the production fix verified until Vercel reports success and the import flow is tested on mobile.
+- Root cause: `App.tsx` rendered `PlaylistImporterView` with an obsolete `onImport` prop while the component requires `onImportPlaylist` plus its required playlist/data callbacks.
+- Fixed in commit `38f0403e9483379d8d93882f12d6586cf4063db8` by wiring the required importer callbacks and data.
+
+### Mobile player visibility + playback mode pass
+`b1e2aa8c76e880345e70eb2fd5ff87f6440ed4e1`
+- Fixed the mobile player being rendered underneath the fixed bottom navigation.
+- Compact player now sits above the mobile navigation lane and remains fully clickable.
+- Desktop placement remains flush to the viewport bottom.
+- Added a real **Audio / Video** mode switch to the Music Cockpit for YouTube-backed tracks.
+- Audio mode keeps YouTube as the invisible playback provider.
+- Video mode exposes the actual YouTube video inside the Cineosync cockpit while keeping Cineosync playback controls authoritative.
+- Video mode can be opened from the compact player on supported screens.
+- Kept the existing seek, play/pause, next/previous, shuffle, repeat, volume, quality, lyrics, equalizer, save and share controls.
+- The YouTube iframe itself remains unbranded as the product UI; it is only exposed when the user explicitly chooses Video mode.
 
 ## Working rule
 Every significant product decision or implementation milestone must be recorded here and/or in the appropriate detailed docs. Never claim a feature is fully verified unless it has actually been tested in the relevant production environment.
