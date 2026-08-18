@@ -91,5 +91,15 @@ Deployment target: `https://vercel.com/akshatusing01-1782s-projects/music-app/JA
 - Discover remains backed by the real search system.
 - Navigation and sessions are not disrupted.
 
+## Playlist import production pass
+- Real YouTube public playlist import implemented with YouTube Data API pagination and deleted/private track filtering.
+- Spotify PKCE import implemented as metadata-to-playable-YouTube matching.
+- CSV/M3U/M3U8 import implemented with real YouTube matching.
+- Fake/default fallback tracks are not used on import failure.
+- Production mobile testing exposed a runtime `o is not a function` error when pressing **Import playlist**.
+- Root cause: `App.tsx` rendered `PlaylistImporterView` with an obsolete `onImport` prop while the component requires `onImportPlaylist` (plus its required playlist/data callbacks). This left the callback undefined at runtime.
+- Fixed in commit `38f0403e9483379d8d93882f12d6586cf4063db8` by wiring `availableSongs`, `playlists`, `onImportPlaylist`, `onPlayPlaylist`, `language`, and `onPlaySong` into the importer.
+- Vercel deployment for the fix is currently **PENDING**; do not call the production fix verified until Vercel reports success and the import flow is tested on mobile.
+
 ## Working rule
 Every significant product decision or implementation milestone must be recorded here and/or in the appropriate detailed docs. Never claim a feature is fully verified unless it has actually been tested in the relevant production environment.
