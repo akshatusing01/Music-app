@@ -1,219 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Disc3, Link2, LogOut, Music2, Play, RefreshCw, Youtube } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle2, Disc3, FileMusic, Link2, LogOut, Music2, Play, RefreshCw, Youtube } from 'lucide-react';
 import { Playlist, Song, SupportedLanguage } from '../../types';
 import { translations } from '../../data/translations';
-import {
-  YouTubePlaylistMeta,
-  YouTubeUser,
-  convertYouTubeTracksToSongs,
-  extractYouTubePlaylistId,
-  fetchPlaylistTracks,
-  fetchUserPlaylists,
-  getYouTubeAccessToken,
-  initYouTubeAuth,
-  logoutYouTube,
-  signInWithYouTubeGoogle,
-} from '../../services/youtubeService';
+import { convertYouTubeTracksToSongs, extractYouTubePlaylistId, fetchPublicYouTubePlaylist, fetchUserPlaylists, getYouTubeAccessToken, initYouTubeAuth, logoutYouTube, playlistMetaToPlaylist, signInWithYouTubeGoogle } from '../../services/youtubeService';
+import { convertSpotifyTracksToPlayableSongs, disconnectSpotify, fetchSpotifyPlaylists, fetchSpotifyPlaylistTracks, finishSpotifyLogin, getSpotifyAccessToken, importSpotifyPlaylist, startSpotifyLogin, SpotifyPlaylistMeta } from '../../services/spotifyImportService';
+import { searchYouTubeMusic } from '../../services/youtubeSearch';
 
-interface PlaylistImporterViewProps {
-  availableSongs: Song[];
-  playlists?: Playlist[];
-  onImportPlaylist: (newPlaylist: Playlist, newSongs?: Song[]) => void;
-  onPlayPlaylist: (playlist: Playlist) => void;
-  onPlaySong?: (song: Song) => void;
-  language: SupportedLanguage;
-}
-
-type Platform = 'youtube' | 'spotify' | 'amazon' | 'apple' | 'jiosaavn';
-
-const platformLabel: Record<Platform, string> = {
-  youtube: 'YouTube Music',
-  spotify: 'Spotify',
-  amazon: 'Amazon Music',
-  apple: 'Apple Music',
-  jiosaavn: 'JioSaavn',
+interface PlaylistImporterViewProps { availableSongs: Song[]; playlists?: Playlist[]; onImportPlaylist: (newPlaylist: Playlist, newSongs?: Song[]) => void; onPlayPlaylist: (playlist: Playlist) => void; onPlaySong?: (song: Song) => void; language: SupportedLanguage; }
+type Source = 'youtube' | 'spotify' | 'file';
+const sourceLabel: Record<Source, string> = { youtube: 'YouTube', spotify: 'Spotify', file: 'Playlist file' };
+function parseExportFile(text: string, fileName: string): Array<{ title: string; artist: string }> { const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const lower = fileName.toLowerCase(); if (lower.endsWith('.m3u') || lower.endsWith('.m3u8')) return lines.filter((line) => !line.startsWith('#')).map((line) => { const clean = decodeURIComponent(line.split('/').pop() || line).replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[._-]+/g, ' ').trim(); const parts = clean.split(' - '); return { artist: parts.length > 1 ? parts[0].trim() : '', title: parts.length > 1 ? parts.slice(1).join(' - ').trim() : clean }; }); const rows = lines.map((line) => line.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/).map((v) => v.trim().replace(/^\"|\"$/g, ''))); const header = rows[0]?.map((v) => v.toLowerCase()); const titleIndex = header?.findIndex((v) => /^(title|track|song|name)$/.test(v)); const artistIndex = header?.findIndex((v) => /^(artist|artists|performer)$/.test(v)); if (titleIndex !== undefined && titleIndex >= 0) return rows.slice(1).map((row) => ({ title: row[titleIndex] || '', artist: artistIndex !== undefined && artistIndex >= 0 ? row[artistIndex] || '' : '' })).filter((x) => x.title); return rows.map((row) => ({ artist: row.length > 1 ? row[0] : '', title: row.length > 1 ? row[1] : row[0] })).filter((x) => x.title); }
+export const PlaylistImporterView: React.FC<PlaylistImporterViewProps> = ({ availableSongs: _availableSongs, onImportPlaylist, language }) => { const t = translations[language] || translations.en; const [source, setSource] = useState<Source>('youtube'); const [input, setInput] = useState(''); const [ytUser, setYtUser] = useState<any>(null); const [ytPlaylists, setYtPlaylists] = useState<any[]>([]); const [spotifyPlaylists, setSpotifyPlaylists] = useState<SpotifyPlaylistMeta[]>([]); const [busy, setBusy] = useState(false); const [progress, setProgress] = useState<{ done: number; total: number } | null>(null); const [refreshing, setRefreshing] = useState(false); const [message, setMessage] = useState<string | null>(null); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { let active = true; void (async () => { try { const completed = await finishSpotifyLogin(); if (completed && active) { setMessage('Spotify connected.'); setSource('spotify'); setSpotifyPlaylists(await fetchSpotifyPlaylists()); } } catch (e: any) { if (active) setError(e?.message || 'Spotify login failed.'); } })(); return () => { active = false; }; }, []);
+  useEffect(() => initYouTubeAuth((user) => setYtUser(user), () => setYtUser(null)), []);
+  const loadConnectedPlaylists = async () => { setRefreshing(true); setError(null); try { if (source === 'spotify') setSpotifyPlaylists(await fetchSpotifyPlaylists()); else if (source === 'youtube' && getYouTubeAccessToken()) setYtPlaylists(await fetchUserPlaylists(getYouTubeAccessToken()!)); } catch (e: any) { setError(e?.message || 'Could not load playlists.'); } finally { setRefreshing(false); } };
+  const importYouTube = async (value: string) => { const id = extractYouTubePlaylistId(value); if (!id) throw new Error('Enter a valid YouTube playlist URL containing a list= ID.'); const { meta, tracks } = await fetchPublicYouTubePlaylist(id); const songs = convertYouTubeTracksToSongs(tracks); const playlist = playlistMetaToPlaylist(meta, tracks); onImportPlaylist(playlist, songs); setMessage(`Imported “${playlist.title}” with ${songs.length} real tracks.`); };
+  const importSpotify = async (value: string) => { setProgress({ done: 0, total: 0 }); const result = await importSpotifyPlaylist(value, (done, total) => setProgress({ done, total })); onImportPlaylist(result.playlist, result.songs); setMessage(`Imported “${result.playlist.title}” with ${result.songs.length} playable tracks.`); setProgress(null); };
+  const importFile = async (file: File) => { const parsed = parseExportFile(await file.text(), file.name); if (!parsed.length) throw new Error('The file contains no recognizable tracks. Use CSV with title,artist columns or an M3U/M3U8 playlist.'); const songs: Song[] = []; setProgress({ done: 0, total: parsed.length }); for (const item of parsed) { try { const result = await searchYouTubeMusic(`${item.artist} ${item.title} official audio`.trim(), 3); const match = result.songs.find((s) => s.youtubeVideoId); if (match) songs.push({ ...match, title: item.title, artist: item.artist || match.artist, tags: [...(match.tags || []), 'File import'], sourceProvider: 'Playlist file → YouTube' }); } catch {} setProgress((p) => ({ done: (p?.done || 0) + 1, total: parsed.length })); } if (!songs.length) throw new Error('None of the imported tracks could be matched to playable YouTube videos.'); const playlist: Playlist = { id: `imported-file-${Date.now()}`, title: file.name.replace(/\.[^.]+$/, ''), description: `Imported from ${file.name}. Playback uses matching YouTube videos.`, coverArt: songs[0].coverArt, songIds: songs.map((s) => s.id), mood: 'all', isCurated: false, creatorName: 'You', platformSource: 'Playlist file → YouTube' }; onImportPlaylist(playlist, songs); setMessage(`Imported “${playlist.title}” with ${songs.length} playable tracks.`); setProgress(null); };
+  const handleImport = async () => { setBusy(true); setError(null); setMessage(null); try { if (source === 'youtube') await importYouTube(input); else if (source === 'spotify') await importSpotify(input); else throw new Error('Choose a playlist file below.'); setInput(''); } catch (e: any) { setProgress(null); setError(e?.message || 'Import failed.'); } finally { setBusy(false); } };
+  const connectYouTube = async () => { setBusy(true); setError(null); try { const result = await signInWithYouTubeGoogle(); if (result) { setYtUser(result.user); setYtPlaylists(await fetchUserPlaylists(result.accessToken)); } } catch (e: any) { setError(e?.message || 'YouTube account OAuth is not configured. Public playlist URLs still work.'); } finally { setBusy(false); } };
+  const connectSpotify = async () => { setBusy(true); setError(null); try { await startSpotifyLogin(); } catch (e: any) { setBusy(false); setError(e?.message || 'Spotify OAuth is not configured.'); } };
+  const disconnect = () => { disconnectSpotify(); setSpotifyPlaylists([]); setMessage('Spotify disconnected.'); };
+  return <div className="mx-auto max-w-5xl space-y-6 pb-28"><section className="rounded-3xl border border-white/10 bg-zinc-950/70 p-6 shadow-2xl backdrop-blur-xl"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-sm font-semibold text-violet-300"><FileMusic size={17} /> Playlist Import</div><h1 className="text-2xl font-extrabold text-white sm:text-4xl">Bring your real playlists into Cineosync</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">Import public YouTube playlists, your Spotify playlists through secure PKCE, or a CSV/M3U export. Imported songs are matched to playable YouTube videos; no fake tracks are created.</p></div></div><div className="mt-6 grid grid-cols-3 gap-2"><button onClick={() => setSource('youtube')} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${source === 'youtube' ? 'border-red-400/50 bg-red-500/15 text-red-200' : 'border-white/10 bg-white/5 text-zinc-400'}`}><Youtube size={14} className="mx-auto mb-1" />YouTube</button><button onClick={() => setSource('spotify')} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${source === 'spotify' ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200' : 'border-white/10 bg-white/5 text-zinc-400'}`}><Disc3 size={14} className="mx-auto mb-1" />Spotify</button><button onClick={() => setSource('file')} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${source === 'file' ? 'border-violet-400/50 bg-violet-500/15 text-violet-200' : 'border-white/10 bg-white/5 text-zinc-400'}`}><FileMusic size={14} className="mx-auto mb-1" />CSV / M3U</button></div>{source !== 'file' ? <div className="mt-4 flex flex-col gap-2 sm:flex-row"><div className="flex flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-4"><Link2 size={17} className="text-zinc-500" /><input value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Paste ${sourceLabel[source]} playlist link or ID`} className="w-full bg-transparent py-3.5 text-sm text-white outline-none placeholder:text-zinc-600" /></div><button onClick={() => void handleImport()} disabled={!input.trim() || busy} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-500 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-40"><Music2 size={17} />{busy ? 'Importing…' : 'Import playlist'}</button></div> : <div className="mt-4 rounded-2xl border border-dashed border-white/15 bg-black/20 p-6 text-center"><input id="playlist-file" type="file" accept=".csv,.txt,.m3u,.m3u8" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void (async () => { setBusy(true); setError(null); try { await importFile(file); } catch (err: any) { setProgress(null); setError(err?.message || 'File import failed.'); } finally { setBusy(false); e.currentTarget.value = ''; } })(); }} /><label htmlFor="playlist-file" className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-bold text-white hover:bg-white/15"><FileMusic size={16} />Choose playlist export</label><p className="mt-3 text-xs text-zinc-500">CSV: <b>title,artist</b> • M3U/M3U8: audio paths or URLs</p></div>}</section>{progress && <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4"><div className="flex justify-between text-xs text-violet-200"><span>Matching tracks to playable audio…</span><span>{progress.done}/{progress.total || '?'}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-black/30"><div className="h-full bg-violet-400 transition-all" style={{ width: progress.total ? `${Math.min(100, progress.done / progress.total * 100)}%` : '8%' }} /></div></div>}{error && <div className="flex items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"><AlertCircle size={18} /><span className="flex-1">{error}</span><button onClick={() => setError(null)} className="text-xs underline">Dismiss</button></div>}{message && <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200"><CheckCircle2 size={18} /><span>{message}</span><button onClick={() => setMessage(null)} className="ml-auto text-xs underline">Dismiss</button></div>}{source === 'youtube' && <section className="rounded-3xl border border-white/10 bg-zinc-950/60 p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold text-white">YouTube account</h2><p className="text-xs text-zinc-500">{ytUser ? 'Connected' : 'Public playlist links work without account access.'}</p></div>{ytUser ? <button onClick={() => { logoutYouTube(); setYtUser(null); setYtPlaylists([]); }} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs"><LogOut size={14} />Disconnect</button> : <button onClick={() => void connectYouTube()} disabled={busy} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-black">Connect YouTube</button>}</div>{ytUser && <div className="mt-4 grid gap-3 sm:grid-cols-2">{ytPlaylists.map((pl: any) => <button key={pl.id} onClick={() => void (async () => { setBusy(true); try { const { meta, tracks } = await fetchPublicYouTubePlaylist(pl.id); const playlist = playlistMetaToPlaylist(meta, tracks); onImportPlaylist(playlist, convertYouTubeTracksToSongs(tracks)); setMessage(`Imported “${playlist.title}”.`); } catch (e: any) { setError(e?.message || 'Import failed.'); } finally { setBusy(false); } })()} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-left hover:bg-white/[0.07]"><img src={pl.thumbnailUrl} alt="" className="h-14 w-14 rounded-xl object-cover" /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{pl.title}</b><small className="text-zinc-500">{pl.itemCount} tracks</small></span><Play size={15} /></button>)}</div>}</section>}{source === 'spotify' && <section className="rounded-3xl border border-white/10 bg-zinc-950/60 p-5"><div className="flex items-center justify-between"><div><h2 className="text-lg font-bold text-white">Spotify library</h2><p className="text-xs text-zinc-500">Secure PKCE authorization; imported metadata is matched to playable YouTube videos.</p></div>{getSpotifyAccessToken() ? <div className="flex gap-2"><button onClick={() => void loadConnectedPlaylists()} disabled={refreshing} className="rounded-xl border border-white/10 px-3 py-2 text-xs"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /></button><button onClick={disconnect} className="rounded-xl border border-white/10 px-3 py-2 text-xs"><LogOut size={14} /></button></div> : <button onClick={() => void connectSpotify()} disabled={busy} className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-black">Connect Spotify</button>}</div>{spotifyPlaylists.length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{spotifyPlaylists.map((pl) => <button key={pl.id} onClick={() => void (async () => { setBusy(true); setError(null); try { const tracks = await fetchSpotifyPlaylistTracks(pl.id); setProgress({ done: 0, total: tracks.length }); const songs = await convertSpotifyTracksToPlayableSongs(tracks, (done, total) => setProgress({ done, total })); if (!songs.length) throw new Error('No tracks could be matched to playable YouTube videos.'); const playlist: Playlist = { id: `imported-spotify-${pl.id}`, title: pl.name, description: pl.description || 'Imported from Spotify.', coverArt: pl.imageUrl || songs[0].coverArt, songIds: songs.map((s) => s.id), mood: 'all', isCurated: false, creatorName: 'You', platformSource: 'Spotify → YouTube' }; onImportPlaylist(playlist, songs); setMessage(`Imported “${pl.name}” with ${songs.length} tracks.`); setProgress(null); } catch (e: any) { setProgress(null); setError(e?.message || 'Spotify import failed.'); } finally { setBusy(false); } })()} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left hover:bg-white/[0.07]"><div className="flex items-center gap-3"><img src={pl.imageUrl} alt="" className="h-14 w-14 rounded-xl object-cover" /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{pl.name}</b><small className="text-zinc-500">{pl.total} tracks</small></span><Play size={15} /></div></button>)}</div>}</section>}<p className="px-2 text-center text-xs text-zinc-600">{t?.appName || 'Cineosync Music'} • Imports preserve playlist metadata and only add tracks that can actually play in Cineosync.</p></div>;
 };
-
-export const PlaylistImporterView: React.FC<PlaylistImporterViewProps> = ({
-  availableSongs,
-  onImportPlaylist,
-  onPlayPlaylist,
-  language,
-}) => {
-  const t = translations[language] || translations.en;
-  const [platform, setPlatform] = useState<Platform>('youtube');
-  const [input, setInput] = useState('');
-  const [ytUser, setYtUser] = useState<YouTubeUser | null>(null);
-  const [ytToken, setYtToken] = useState<string | null>(null);
-  const [userPlaylists, setUserPlaylists] = useState<YouTubePlaylistMeta[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const songsForFallback = useMemo(() => availableSongs.slice(0, 8), [availableSongs]);
-
-  useEffect(() => {
-    return initYouTubeAuth(
-      (user, token) => {
-        setYtUser(user);
-        setYtToken(token);
-        void loadUserPlaylists(token);
-      },
-      () => {
-        setYtUser(null);
-        setYtToken(null);
-        setUserPlaylists([]);
-      },
-    );
-  }, []);
-
-  const loadUserPlaylists = async (token: string) => {
-    setRefreshing(true);
-    try {
-      setUserPlaylists(await fetchUserPlaylists(token));
-    } catch (e: any) {
-      setError(e?.message || 'Could not load YouTube playlists.');
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const connectYouTube = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await signInWithYouTubeGoogle();
-      if (!result) return;
-      setYtUser(result.user);
-      setYtToken(result.accessToken);
-      await loadUserPlaylists(result.accessToken);
-      setMessage('YouTube account connected.');
-    } catch (e: any) {
-      setError(e?.message || 'Google/YouTube account connection is not configured yet.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createImportedPlaylist = async (title: string, sourceUrl: string, playlistId?: string) => {
-    let songs: Song[] = [];
-    if (playlistId && (ytToken || getYouTubeAccessToken())) {
-      try {
-        const tracks = await fetchPlaylistTracks(ytToken || getYouTubeAccessToken()!, playlistId);
-        songs = convertYouTubeTracksToSongs(tracks);
-      } catch {
-        // Fall back to local catalogue so importing a link never blocks the app.
-      }
-    }
-    if (!songs.length) {
-      songs = songsForFallback.map((song, index) => ({
-        ...song,
-        id: `${platform}-import-${Date.now()}-${index}-${song.id}`,
-        sourceProvider: platformLabel[platform],
-        tags: [...(song.tags || []), 'Imported', platformLabel[platform]],
-      }));
-    }
-    if (!songs.length) throw new Error('There are no songs available to build the imported playlist.');
-
-    const playlist: Playlist = {
-      id: `imported-${platform}-${Date.now()}`,
-      title,
-      description: sourceUrl ? `Imported from ${sourceUrl}` : `Imported from ${platformLabel[platform]}`,
-      coverArt: songs[0].coverArt,
-      songIds: songs.map((song) => song.id),
-      mood: 'all',
-      isCurated: false,
-      creatorName: ytUser?.displayName || 'You',
-      platformSource: platformLabel[platform],
-    };
-    onImportPlaylist(playlist, songs);
-    setMessage(`Imported “${playlist.title}” with ${songs.length} tracks.`);
-    return playlist;
-  };
-
-  const handleImport = async (source?: { id: string; title: string; description?: string; thumbnailUrl?: string }) => {
-    const raw = input.trim();
-    if (!raw && !source) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const target = source?.id || raw;
-      const playlistId = platform === 'youtube' ? extractYouTubePlaylistId(target) : null;
-      const playlist = await createImportedPlaylist(
-        source?.title || `Imported ${platformLabel[platform]} Playlist`,
-        source?.description || raw,
-        playlistId || undefined,
-      );
-      if (source?.thumbnailUrl) playlist.coverArt = source.thumbnailUrl;
-      setInput('');
-    } catch (e: any) {
-      setError(e?.message || 'Import failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const disconnect = async () => {
-    await logoutYouTube();
-    setYtUser(null);
-    setYtToken(null);
-    setUserPlaylists([]);
-    setMessage('YouTube account disconnected.');
-  };
-
-  return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-28">
-      <section className="rounded-3xl border border-white/10 bg-zinc-950/70 p-6 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-red-300"><Youtube size={17} /> Playlist Import</div>
-            <h1 className="text-2xl font-extrabold text-white sm:text-4xl">Bring your playlists into SyncBeat</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">Paste a playlist link or connect YouTube to load your own playlists. Imports always have a local fallback so the page stays usable without OAuth configuration.</p>
-          </div>
-          {ytUser ? (
-            <button onClick={disconnect} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-white/10"><LogOut size={14} /> Disconnect</button>
-          ) : (
-            <button onClick={connectYouTube} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-black disabled:opacity-50"><Youtube size={15} /> {busy ? 'Connecting…' : 'Connect YouTube'}</button>
-          )}
-        </div>
-
-        <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {(Object.keys(platformLabel) as Platform[]).map((item) => (
-            <button key={item} onClick={() => setPlatform(item)} className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${platform === item ? 'border-red-400/50 bg-red-500/15 text-red-200' : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10'}`}>
-              {platformLabel[item]}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <div className="flex flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-4"><Link2 size={17} className="text-zinc-500" /><input value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Paste ${platformLabel[platform]} playlist link or ID`} className="w-full bg-transparent py-3.5 text-sm text-white outline-none placeholder:text-zinc-600" /></div>
-          <button onClick={() => void handleImport()} disabled={!input.trim() || busy} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-500 px-5 py-3.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><Music2 size={17} /> {busy ? 'Importing…' : 'Import Playlist'}</button>
-        </div>
-      </section>
-
-      {error && <div className="flex items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"><AlertCircle size={18} /> <span className="flex-1">{error}</span><button onClick={() => setError(null)} className="text-xs underline">Dismiss</button></div>}
-      {message && <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200"><CheckCircle2 size={18} /> <span>{message}</span><button onClick={() => setMessage(null)} className="ml-auto text-xs underline">Dismiss</button></div>}
-
-      {ytUser && (
-        <section className="rounded-3xl border border-white/10 bg-zinc-950/60 p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div><h2 className="text-lg font-bold text-white">Your YouTube Playlists</h2><p className="text-xs text-zinc-500">{ytUser.displayName || ytUser.email || 'Connected account'}</p></div>
-            <button onClick={() => ytToken && void loadUserPlaylists(ytToken)} disabled={refreshing} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-300"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Refresh</button>
-          </div>
-          {userPlaylists.length ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {userPlaylists.map((pl) => <article key={pl.id} className="overflow-hidden rounded-2xl border border-white/10 bg-black/20"><img src={pl.thumbnailUrl} alt="" className="aspect-video w-full object-cover" /><div className="space-y-2 p-4"><h3 className="truncate font-semibold text-white">{pl.title}</h3><p className="line-clamp-2 text-xs text-zinc-500">{pl.description || `${pl.itemCount} tracks`}</p><button onClick={() => void handleImport(pl)} disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-white/15"><Play size={13} /> Import & Play Later</button></div></article>)}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-500">No playlists returned yet.</div>
-          )}
-        </section>
-      )}
-
-      <p className="px-2 text-center text-xs text-zinc-600">{t?.appName || 'SyncBeat'} • Playlist import is designed to fail soft instead of breaking playback.</p>
-    </div>
-  );
-};
-
 export default PlaylistImporterView;
