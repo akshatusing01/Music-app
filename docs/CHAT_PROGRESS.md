@@ -78,8 +78,6 @@ Status note: `docs/D4_STATUS.md`
 - Library, Sessions and mix creation remain directly reachable.
 - Existing `HomeView` route now re-exports `ForYouView`, so the App shell keeps its current contract.
 
-Latest D4 wiring commit: `4a389f23cb0ee8083f842682e832b03085cb77bb`
-
 ### Playlist import production pass
 - Real YouTube public playlist import implemented with YouTube Data API pagination and deleted/private track filtering.
 - Spotify PKCE import implemented as metadata-to-playable-YouTube matching.
@@ -90,7 +88,7 @@ Latest D4 wiring commit: `4a389f23cb0ee8083f842682e832b03085cb77bb`
 - Fixed in commit `38f0403e9483379d8d93882f12d6586cf4063db8` by wiring the required importer callbacks and data.
 
 ### Mobile player visibility + playback mode pass
-`b1e2aa8c76e880345e70eb2fd5ff87f6440ed4e1`
+Latest code commit: `377d239594862f0b0f94736f70ea9cb659b4d95c`
 - Fixed the mobile player being rendered underneath the fixed bottom navigation.
 - Compact player now sits above the mobile navigation lane and remains fully clickable.
 - Desktop placement remains flush to the viewport bottom.
@@ -99,6 +97,7 @@ Latest D4 wiring commit: `4a389f23cb0ee8083f842682e832b03085cb77bb`
 - Video mode exposes the actual YouTube video inside the Cineosync cockpit while keeping Cineosync playback controls authoritative.
 - Video mode can be opened from the compact player on supported screens.
 - Kept the existing seek, play/pause, next/previous, shuffle, repeat, volume, quality, lyrics, equalizer, save and share controls.
+- Audio quality options use the actual `AudioQuality` union: `data-saver-64k`, `normal-128k`, and `high-320k`.
 - The YouTube iframe itself remains unbranded as the product UI; it is only exposed when the user explicitly chooses Video mode.
 
 ## Working rule
