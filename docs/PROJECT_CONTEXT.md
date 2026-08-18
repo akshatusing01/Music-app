@@ -4,275 +4,105 @@
 >
 > **Rule:** Before any significant implementation change, update this file with the decision. After implementation, record the commit/deployment and verification status here.
 
-## 0. Project Working Rules
+## Product
+- Final name: **Cineosync Music**
+- Positioning: creative music + lifestyle platform with social listening and public discovery.
+- Emotional core: **Editorial Luxury × Intelligent Music**.
+- Visual base: Obsidian + subtle glass + restrained accent.
 
-- Product is evolving from a functional prototype into a real, polished app.
-- Existing functionality should be preserved or improved while the UI is substantially redesigned.
-- Work in explicit stages: discovery/questions → UX/IA → visual design → technical architecture → controlled implementation → production verification → polish/security.
-- No major redesign should silently remove a working feature.
-- No deployment should be called "ready" without checking the actual deployment/build/runtime status available to us.
-- Mobile is a first-class target.
-- Keep major product decisions in this file so future conversations can recover context from the repository.
+## Locked UX
+- Mobile primary navigation: **Home / Discover / Sessions / Library / Profile**.
+- Sessions is a first-class destination.
+- Home personalized destination: **For You**.
+- Public rooms appear in Discover and Sessions.
+- Player direction: signature **Music Cockpit**.
+- Always-reachable mobile controls: Play/Pause, Forward, Like.
+- Visible editable username; immutable internal SyncBeat ID.
+- Progressive onboarding.
 
-## 1. Product Vision
-
-**Final product name:** Cineosync Music
-
-**Positioning:** A creative music + lifestyle platform. Music is the center, but the product extends into social listening, public discovery, focus/productivity, gym energy, couple experiences, and other music-led lifestyles.
-
-**Product principle:** Familiar enough to understand immediately, but visually and experientially original enough that it does not feel like a Spotify/YouTube Music clone.
-
-## 2. Current Functional Foundation
-
-Existing capabilities to preserve/improve:
-- Real YouTube music search/results and playback
+## Existing functionality to preserve/improve
+- Real YouTube search/results and playback
 - Queue/player controls
-- Real-time listening rooms
-- Room invite links and room-name joining
-- Host-authoritative playback synchronization and mobile autoplay fallback
-- Live chat/reactions
-- Host transfer / automatic host promotion
-- In-room YouTube search
-- Focus timer / stopwatch / ambient sounds
-- Library, likes, playlists, history
-- Supabase-backed auth/cloud persistence foundation
-- Profile avatar upload
-- Persistent SyncBeat ID/friend-code foundation
+- Realtime listening rooms
+- Room links and room-name joining
+- Host-authoritative synchronization
+- Mobile autoplay fallback
+- Chat/reactions
+- Host transfer
+- In-room search
+- Focus timer/stopwatch/ambient sounds
+- Library/likes/playlists/history
+- Supabase auth/cloud persistence
+- Avatar upload
 - Friend requests and room invitations
 
-## 3. Current Technical Foundation
+## Technical foundation
+- React + TypeScript + Vite
+- Vercel
+- Supabase Auth/Database/Storage
+- WebSocket realtime transport under `/api/ws`
+- YouTube IFrame Player API
+- Local persistence fallback
 
-- Frontend: React + TypeScript + Vite
-- Hosting/deployment: Vercel
-- Realtime room transport: WebSocket endpoint under `/api/ws`
-- Database/auth/storage: Supabase
-- YouTube playback: YouTube IFrame Player API
-- Local persistence remains for graceful fallback/offline-first behavior
+## Architecture rules
+- One source of truth per concern.
+- Playback state is separate from UI state.
+- Session state is server-authoritative.
+- Supabase owns durable identity/social/profile data.
+- WebSocket owns ephemeral room state.
+- YouTube is a provider adapter, not the product identity.
+- UI components do not call providers directly.
+- Mobile is first-class.
+- Every major feature needs loading/empty/error/reconnect states.
 
-## 4. Redesign Goals
+## D1 — Design System
+- Semantic obsidian surfaces and text tokens.
+- Single Cineosync accent token.
+- Editorial typography hierarchy.
+- 4px spacing base.
+- Restrained glass for cockpit/overlays/session controls.
+- Minimum 44px touch targets.
+- Visible focus states and reduced-motion support.
+- Build tokens → primitives → patterns → screens.
 
-### Product character
-- Creative, premium, atmospheric, music-first.
-- Lifestyle-oriented rather than simply a streaming catalog.
-- Strong sense of identity, presence, mood, and context.
-- Public discovery should coexist with personal/private experiences.
+## D2 — App Shell — IMPLEMENTED
+The first working shell migration is now on `main`.
 
-### Visual direction
-- **Obsidian + subtle glass + restrained accent color**.
-- Avoid heavy neon, excessive gradients, noisy glassmorphism, and generic AI-dashboard aesthetics.
-- Introduce depth through typography, spacing, shadows, translucency, artwork, and motion rather than many colors.
-- Establish a new visual language instead of copying existing music platforms.
+### Implemented
+- Replaced legacy YouTube-like header branding with **Cineosync Music** branding.
+- Reworked desktop header into a restrained obsidian/glass shell.
+- Desktop navigation now prioritizes Home, Discover, Sessions, Library and Profile.
+- Added compact session connection status.
+- Added restrained language/profile/action controls.
+- Added responsive mobile navigation drawer.
+- Added fixed five-item mobile bottom navigation.
+- Added mobile safe-area/content-bottom reservation so fixed navigation does not cover screens.
+- Reworked desktop sidebar to match the new visual language and five-primary-destination structure.
+- Kept Focus accessible as a secondary lifestyle mode rather than making it a sixth primary destination.
+- Preserved existing App-level playback/session/domain handlers rather than replacing them during shell migration.
+- Removed visible legacy YouTube Music branding from the shell.
+- Removed the stock remote avatar from the new shell; profile currently uses a neutral local placeholder until the authenticated profile/avatar surface is migrated.
 
-### Navigation decision
-Primary mobile navigation is:
-**Home / Discover / Sessions / Library / Profile**
+### D2 commits
+- Navbar shell: `c48568dca6f265eef8f7364757cf3bcc0d4c7664`
+- Design/shell CSS: `6292fb2a0df7561d4e9708fa21aaad85291d53d6`
+- Desktop sidebar: `4ebdc374f496b0bbe8e47498e808ca8b04bce9bb`
 
-### Sessions decision
-Sessions is a **major first-class destination**, equal in importance to Home and Discover.
+### Verification status
+- GitHub commit status for latest D2 commit reports Vercel deployment **pending** at the time of recording.
+- Code has been changed through the GitHub integration, but a live mobile/desktop browser QA pass has **not** been claimed here.
+- Next verification must cover: production build, mobile navigation, player/cockpit stacking, room chat visibility, active-room navigation persistence, search-in-room behavior, and desktop sidebar/header layout.
 
-### Player decision
-The player becomes a **music cockpit** rather than a conventional bottom bar. It should support a compact state and an expanded immersive state while maintaining fast access to essential playback controls.
+## Next milestones
+1. D3 — Music Cockpit migration
+2. D4 — For You / Discover
+3. D5 — Sessions UI migration
+4. D6 — Library/Profile/Social/Auth
+5. D7 — full production QA
 
-### Mobile player priority
-Three controls must always be instantly reachable:
-1. Play / Pause
-2. Forward
-3. Like
-
-### Social decision
-Cineosync Music will support a **public discovery layer**, while still supporting private/friends-first experiences.
-
-### Identity decision
-The user's visible username/handle is a first-class identity across the product, not something hidden only inside settings.
-
-### Discovery decision
-Discovery should adapt to listener context: past activity and saved tastes for returning users; artists, languages, genres, moods, and goals for new users; eventually blended with time, mode, sessions, and lifestyle intent.
-
-## 5. Stage B — UX / Information Architecture — LOCKED
-
-### 5.1 App shell
-Desktop: left navigation rail/expandable sidebar, central content stage, optional contextual right rail, persistent compact cockpit.
-
-Mobile: 5-item bottom navigation Home / Discover / Sessions / Library / Profile; persistent compact cockpit above navigation when active; cockpit expands into a full-screen/near-full-screen experience; fixed UI must never obscure content, chat, or controls.
-
-### 5.2 Home — "For You"
-1. Greeting + current identity/presence
-2. Continue listening / resume context
-3. Personalized discovery
-4. Recently played / familiar favorites
-5. Mood & lifestyle contexts
-6. Friends / public listening activity
-7. Sessions worth joining
-8. Curated editorial / emerging discovery
-
-New-user state: progressive preference onboarding for artists, languages, genres, moods, and use cases.
-
-### 5.3 Discover
-Context-driven exploration: Search, regional/language trends, because-you-listened-to, artist/language/mood discovery, lifestyle modes, public rooms, community moments/recommendations.
-
-### 5.4 Sessions
-First-class social control center: discover public rooms, create, join by name/ID/link, invitations, active room, participants, shared playback, queue, chat/reactions, host controls, host transfer, public visibility.
-
-### 5.5 Library
-Liked, playlists, recently played, imported playlists, saved sessions/moments (future), supported offline/downloads.
-
-### 5.6 Profile
-Avatar, visible username, SyncBeat ID, listening identity, friends, friend requests, room invites, activity/privacy, account/auth, preferences, appearance/audio settings.
-
-### 5.7 Music cockpit
-Compact: artwork, track/artist, play/pause, forward, like, progress hint.
-Expanded: large artwork/atmosphere, full controls, queue, lyrics, session context, share, playback settings, equalizer, output/quality controls.
-
-## 6. Stage B Decisions — CONFIRMED
-
-1. Home hero/personalized destination: **For You**.
-2. Public rooms appear in both **Discover + Sessions**; Discover emphasizes editorial/recommended rooms, Sessions is the complete room discovery/control center.
-3. **One recognizable Cineosync primary accent**, with restrained contextual variations for Focus/Gym/Couple.
-4. **Immersive cockpit overlay/bottom-sheet**, not a separate route.
-5. **Visible editable username/handle** for people-facing identity; **immutable SyncBeat ID** for backend identity.
-6. **Progressive onboarding**: immediate exploration first, personalization prompts when useful.
-
-## 7. Stage C — Visual Design Direction — LOCKED
-
-### 7.1 Emotional core
-User selected:
-- **D — Editorial Luxury**
-- **E — Intelligent**
-
-The combined emotional direction is **Editorial Luxury × Intelligent Music**.
-
-Cineosync should feel like a premium contemporary music/culture publication that understands the listener personally. It should be sophisticated and restrained, but the interface should visibly adapt to context rather than behaving like a static catalog.
-
-### 7.2 Visual personality
-- Quiet confidence rather than flashy futurism.
-- Strong typography and editorial composition.
-- Generous negative space.
-- High-quality artwork/photography as visual anchors.
-- Intelligent content hierarchy and contextual modules.
-- Premium dark surfaces with subtle glass used selectively.
-- Motion communicates state and intelligence rather than spectacle.
-- Avoid obvious Spotify/Apple Music/YouTube Music imitation.
-
-### 7.3 Color system
-- Primary foundation: near-black obsidian.
-- Supporting surfaces: graphite/charcoal.
-- Glass: low-opacity neutral translucent surfaces with controlled blur.
-- Brand accent: one restrained Cineosync accent, used sparingly for actions, progress, active states and key identity moments.
-- Semantic colors only where they communicate state.
-- Artwork can provide contextual color atmosphere, but must not redefine the core brand palette.
-
-### 7.4 Typography
-Typography should carry a large part of the identity.
-- Display/headline face: distinctive editorial character, used selectively for major titles and identity moments.
-- UI/body face: highly legible, neutral, modern.
-- Strong hierarchy through size, weight, tracking and whitespace rather than excessive decorative styling.
-- Track metadata remains compact and highly scannable.
-- Monospace only for technical/session metadata when it adds meaning.
-
-### 7.5 Layout language
-- Editorial asymmetry is allowed on larger screens.
-- Mobile remains structured and predictable despite the editorial aesthetic.
-- Prefer composition and sections over endless rounded cards.
-- Use large visual anchors followed by dense-but-readable supporting lists.
-- Content should feel curated rather than algorithmically dumped onto the screen.
-
-### 7.6 Glass and surfaces
-- Glass is a supporting material, not the identity itself.
-- Use it for cockpit, overlays, session controls, contextual floating tools and high-value transient UI.
-- Avoid applying blur/transparency to every container.
-- Surfaces should have subtle borders, depth and separation without excessive shadows.
-
-### 7.7 Intelligent UI behavior
-The interface should adapt based on context:
-- New vs returning listener
-- Current listening activity
-- Current mode (Focus/Gym/Couple/etc.)
-- Session participation
-- Time/context where useful
-- Personal preferences
-
-Examples:
-- A returning listener sees Continue Listening and behavior-based recommendations first.
-- A new listener sees a concise preference setup and immediately useful starter music.
-- A user inside a session sees room context without losing access to music discovery.
-- The cockpit changes density based on compact/expanded state.
-
-The UI should explain recommendation intent where appropriate (e.g. "Because you played…") rather than pretending the algorithm is magic.
-
-### 7.8 Motion language
-- Editorial, smooth, restrained.
-- Use spring/ease transitions for cockpit expansion, page/module reveals, session state and contextual recommendations.
-- Avoid constant floating animations or decorative motion.
-- Respect reduced-motion preferences.
-
-## 8. Stage C — Component Principles
-
-Reusable primitives will be designed before full screens:
-- App shell/navigation
-- Typography tokens
-- Surface/section primitives
-- Buttons and icon buttons
-- Search field
-- Track row
-- Artist row
-- Album/artwork tile
-- Playlist module
-- Recommendation module
-- Mood/lifestyle module
-- Room card
-- Participant/avatar stack
-- Chat message/input
-- Music cockpit compact/expanded
-- Progress/seek control
-- Queue drawer
-- Modal/sheet
-- Toast/notification
-- Empty/loading/error states
-
-Each component must have responsive, accessible states before being composed into screens.
-
-## 9. Discovery / Recommendation Architecture Direction
-
-Future recommendation system should be modular and explainable.
-
-Signals: explicit preferences; plays/skips/repeats/likes/saves; context; social activity; freshness.
-
-Outputs: track rows, artist modules, mood collections, contextual mixes, public room recommendations, explainable because-you-listened-to modules.
-
-## 10. Implementation Milestones — PLANNED
-
-1. Visual tokens and primitives
-2. App shell + responsive navigation
-3. For You/Home
-4. Discover
-5. Sessions
-6. Music Cockpit
-7. Library
-8. Profile/social/auth
-9. Onboarding/personalization
-10. Polish/accessibility/performance
-11. Production QA
-
-**Implementation rule:** Do not rewrite the whole UI until the visual tokens/primitives are documented and approved. Build reusable primitives first, then compose screens from them.
-
-## 11. Decision & Change Log
-
-- 2026-08-18: Product direction locked as Cineosync Music: creative music + lifestyle platform.
-- 2026-08-18: Primary mobile navigation locked to Home / Discover / Sessions / Library / Profile.
-- 2026-08-18: Sessions confirmed as a major first-class destination.
-- 2026-08-18: Player direction locked as signature Music Cockpit.
-- 2026-08-18: Mobile essential controls locked: Play/Pause, Forward, Like.
-- 2026-08-18: Visual base locked: Obsidian + subtle glass + restrained accent.
-- 2026-08-18: Design language must be original rather than a Spotify/YouTube Music clone.
-- 2026-08-18: Public discovery layer confirmed.
-- 2026-08-18: Visible username/handle confirmed as first-class identity.
-- 2026-08-18: Final product name confirmed: Cineosync Music.
-- 2026-08-18: Stage B recommendations accepted: For You, public rooms in Discover + Sessions, one core accent system, immersive cockpit overlay, username + immutable SyncBeat ID, progressive onboarding.
-- 2026-08-18: Stage C emotional core selected: Editorial Luxury + Intelligent.
-- 2026-08-18: Stage C visual principles documented and locked.
-
-## 12. Verification Notes
-
-- This document is intentionally kept in-repo so future sessions can recover product decisions without relying on conversation context.
-- Feature verification must distinguish code/build verification from real multi-device/browser verification.
-- Never claim realtime/mobile/autoplay behavior is fully verified unless it has actually been tested in the relevant environment.
+## Change log
+- 2026-08-18: Product direction locked as Cineosync Music.
+- 2026-08-18: Editorial Luxury × Intelligent selected as emotional core.
+- 2026-08-18: Five-item mobile navigation locked.
+- 2026-08-18: D1 design system documented.
+- 2026-08-18: D2 shell implemented on main.
